@@ -1,3 +1,7 @@
+#ignore files that start with a period
+.*
+
+
 # Ignore log files
 *.log
 
