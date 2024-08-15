@@ -1,5 +1,5 @@
 # from position_v3 import *
-from AM_position import *
+from position import *
 from plot_3d import *
 
 # def test_applyRotation():
@@ -32,12 +32,31 @@ from plot_3d import *
     # visualize_positions(t, rotated)
 
 
-def test_calc_limb_distances():
-    backstep = positions[positions['description'] == 'back step pass']['code'].iloc[0]
-    top_free = transitions[transitions['description'] == 'top tries to free leg']['start_position'].iloc[0]
-    pos1 = Position(backstep)
-    pos2 = Position(top_free)
-    visualize_distances(pos1,pos2)
+# def test_calc_limb_distances():
+#     backstep = positions[positions['description'] == 'back step pass']['code'].iloc[0]
+#     top_free = transitions[transitions['description'] == 'top tries to free leg']['start_position'].iloc[0]
+#     pos1 = Position(backstep)
+#     pos2 = Position(top_free)
+#     visualize_distances(pos1,pos2)
+
+def test_swap_players():
+    honey = Position(transitions[transitions['description'] == 'to honey']['start_position'].iloc[1])
+    honey_swapped = swap_players(honey)
+    # visualize_positions(honey,honey_swapped)
+    swapped = positions_are_equivalent(honey, honey_swapped)
+    if swapped is not True:
+        raise ValueError('swapped positions should be detected as equivalent')
+
+def test_procrustes_analysis():
+    # honey = Position(transitions[transitions['description'] == 'to honey']['start_position'].iloc[1])
+    # honey_swapped = swap_players(honey)
+    imanari = Position(positions[positions['description'] == 'completed imanari roll']['code'].iloc[0])
+    backstep = Position(positions[positions['description'] == 'back step pass']['code'].iloc[0])
+    visualize_positions(imanari,backstep)
+    mtx1, mtx2, disparity = procrustes(pos_to_list(imanari), pos_to_list(backstep))
+    visualize_positions(Position(list(mtx1)),Position(list(mtx2)))
+    print(disparity)
+
 def test_imanari_honey():
     # these should be equivalent
     imanari = positions[positions['description'] == 'completed imanari roll']['code'].iloc[0]

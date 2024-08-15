@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from AM_position import Joint, Position, calc_limb_distances
+from position import Joint, Position, calc_limb_distances
 import numpy as np
 
 
@@ -73,6 +73,44 @@ def visualize_positions(pos1, pos2, title1="Position 1", title2="Position 2"):
 
     # Show the plot
     fig.show()
+
+def visualize_3d(list1,list2):
+    def create_3d_scatter(points, title):
+        x, y, z = np.array(points).T
+        return go.Scatter3d(
+            x=x, y=y, z=z,
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=z,
+                colorscale='Viridis',
+                opacity=0.8
+            ),
+            name=title
+        )
+    # Create subplots
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs=[[{'type': 'scene'}, {'type': 'scene'}]],
+        subplot_titles=(
+        'pos1', 'pos2')
+    )
+    fig.add_trace(create_3d_scatter(list1, 'pos 1'), row=1, col=1)
+    fig.add_trace(create_3d_scatter(list2, 'pos 2'), row=1, col=2)
+
+    # Update the layout
+    fig.update_layout(
+        title='3D Scatter Plot of Two Positions',
+        height=2000,
+        width=2000,
+        scene=dict(aspectmode='cube'),
+        scene2=dict(aspectmode='cube'),
+    )
+
+    # Show the plot
+    fig.show()
+
+
 
 
 def visualize_distances(pos1,pos2):
