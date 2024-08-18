@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export GrappleMap objects as json files</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/5.47.0/babylon.js"></script>
+    <script>
+        function v3(x, y, z) {
+            return new BABYLON.Vector3(x, y, z);
+        }
+
+        function exportToJsonFile(objectData, fileName) {
+            const jsonString = JSON.stringify(objectData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportObject(objectName) {
+            if (window[objectName] && (Array.isArray(window[objectName]) || typeof window[objectName] === 'object')) {
+                exportToJsonFile(window[objectName], `${objectName}.json`);
+            } else {
+                console.error(`Object "${objectName}" not found or not exportable`);
+                alert(`Error: Object "${objectName}" not found or not exportable`);
+            }
+        }
+    </script>
+    <script src="https://eel.is/GrappleMap/transitions.js"></script>
+</head>
+<body>
+    <h1>Export JavaScript Objects</h1>
+    <button onclick="exportObject('nodes')">Export Nodes</button>
+    <button onclick="exportObject('transitions')">Export Transitions</button>
+    <button onclick="exportObject('tags')">Export Tags</button>
+    <button onclick="exportAllObjects()">Export All</button>
+    <script>
+        function exportAllObjects() {
+            exportObject('nodes');
+            exportObject('transitions');
+            exportObject('tags');
+        }
+    </script>
+</body>
+</html>

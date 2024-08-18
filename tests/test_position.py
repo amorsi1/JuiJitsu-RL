@@ -1,6 +1,6 @@
 # from position_v3 import *
-from position import *
-from plot_3d import *
+from Graph.depracated.position import *
+from Graph.depracated.plot_3d import *
 
 # def test_applyRotation():
 #     p = Position(positions[positions['description'] == 'completed imanari roll']['code'].iloc[0])
