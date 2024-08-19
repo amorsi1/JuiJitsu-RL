@@ -67,32 +67,27 @@ def find_and_tag_all_moves(G):
     G = flag_point_earning_move(G, 'sweep')
     # mounts
     G = find_move_by_node_tags(G, 'mount')
-
     # backtakes
     G = find_move_by_node_tags(G, 'back')
-    # takedowns
+    # takedowns # note: both of these describe the same point earning move
     G = flag_point_earning_move(G, 'throw')
-    G = flag_point_earning_move(G, 'takedown')  # note: both of these describe the same point earning move
-
+    G = flag_point_earning_move(G, 'takedown')
     # guard passes
     G = flag_point_earning_move(G, 'pass')
-
     # knee on belly
     # to do
     return G
 
-G = construct_graph()
+def add_rewards_to_graph(G):
+    ## Identifying terminal game states
+    # Flagging positions where one player has won. This identified checkmates positions to terminate the game at
+    G = add_terminal_win_states(G)
+    # Identifying moves where one player submits and flagging it
+    G = add_tap_flag(G)
 
-## Identifying terminal game states
-# Flagging positions where one player has won. This identified checkmates positions to terminate the game at
-G = add_terminal_win_states(G)
-# Identifying moves where one player submits and flagging it
-G = add_tap_flag(G)
-
-## Identifying point-earning moves and tagging them
-
-G = find_and_tag_all_moves(G)
-print(G)
+    ## Identifying point-earning moves and tagging them
+    G = find_and_tag_all_moves(G)
+    return G
 
 
 

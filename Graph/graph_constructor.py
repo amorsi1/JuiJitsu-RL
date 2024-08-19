@@ -1,6 +1,6 @@
 import json
 import networkx as nx
-
+from reward import add_rewards_to_graph
 
 def add_nodes(node_list: list) -> nx.classes.digraph.DiGraph:
 
@@ -37,6 +37,10 @@ def construct_graph(nodes_path = 'files/nodes.json',transitions_path = 'files/tr
 
     G = add_nodes(nodes)
     G = add_edges(transitions,G)
+
+    #add rewards signal to GrappleMap data
+    G = add_rewards_to_graph(G)
+
     return G
 
 G = construct_graph()
