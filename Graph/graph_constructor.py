@@ -2,14 +2,13 @@ import json
 import networkx as nx
 
 
-def add_nodes(nodes: list) -> nx.classes.digraph.DiGraph:
+def add_nodes(node_list: list) -> nx.classes.digraph.DiGraph:
 
     G = nx.DiGraph()
-    for node in nodes:
-        node.pop('position', None) # removes position item from node
+    for node in node_list:
+        node.pop('position', None) # removes unnecessary 3D information from node
         node['description'] = node['description'].replace("\n", " ") # remove newline characters from description
-        node_id = node.pop('id')
-        G.add_node(node_id, **node)
+        G.add_node(node['id'], **node)
     return G
 
 def add_edges(transitions: list, G: nx.classes.digraph.DiGraph):
@@ -18,10 +17,14 @@ def add_edges(transitions: list, G: nx.classes.digraph.DiGraph):
         if isinstance(transition['description'],list):
             # extracts just the name
             transition['description'] = transition['description'][0]
-        transition.pop('frames', None)  # removes frames item from transition
+        transition.pop('frames', None)  # removes unnecessary 3D data
         start = transition['from']['node']
         end = transition['to']['node']
         G.add_edge(start,end,**transition)
+        # adds edge in opposite direction if the transition is bidirectional
+        if 'bidirectional' in transition['properties']:
+            G.add_edge(end, start, **transition)
+
     return G
 def load_json(fpath):
     with open(fpath, 'r') as file:
