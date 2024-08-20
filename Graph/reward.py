@@ -1,8 +1,12 @@
-from graph_constructor import construct_graph, load_json
+import json
 
+def load_json(fpath):
+    with open(fpath, 'r') as file:
+        return json.load(file)
 def add_terminal_win_states(G,json_path='files/terminal_node_winstate.json'):
     # add annotations of which nodes are considered a win
-    terminal_win_nodes = load_json(json_path)
+    with open(json_path, 'r') as file:
+        terminal_win_nodes = json.load(file)
     for node_dict in terminal_win_nodes:
         G.nodes[node_dict['node']]['winner'] = node_dict['winner']
     return G
@@ -24,7 +28,7 @@ def add_tap_flag(G):
 
 def flag_point_earning_move(G,move: str):
     """
-    Checks the 'tags' valyes of every transition in the graph for the inputted flag, then adds a new edge attribute with a boolean.
+    Checks the 'tags' values of every transition in the graph for the inputted flag, then adds a new edge attribute with a boolean.
     This is meant to be used to check for transitions that should earn points for the player who executed it
     """
     def is_move_in_tags(start,end, move=move, G=G) -> bool:
