@@ -1,19 +1,22 @@
 import json
 
+
 def load_json(fpath):
     with open(fpath, 'r') as file:
         return json.load(file)
-def add_terminal_win_states(G,json_path='files/terminal_node_winstate.json'):
-    # add annotations of which nodes are considered a win
+
+
+def add_terminal_win_states(G, json_path='files/terminal_node_winstate.json'):
+    """add annotations of which nodes are considered a win """
     with open(json_path, 'r') as file:
         terminal_win_nodes = json.load(file)
     for node_dict in terminal_win_nodes:
         G.nodes[node_dict['node']]['winner'] = node_dict['winner']
     return G
 def add_tap_flag(G):
+    """Marks that this move is a tap, telling game engine that this player lost"""
     # to do: 4 of the 'tap' transitions have properties that don't match the position
 
-    # Marks that this move is a tap, telling game engine that the other player won
     for node in G.nodes():
         # Get all outgoing edges
         out_edges = list(G.out_edges(node, data=True))
@@ -22,7 +25,7 @@ def add_tap_flag(G):
             # Get the edge data
             source, target, edge_data = out_edges[0]
             # Add a new attribute to the edge
-            G.edges[source,target]['tap'] = True
+            G.edges[source, target]['tap'] = True
 
     return G
 
@@ -32,11 +35,12 @@ def flag_point_earning_move(G,move: str):
     This is meant to be used to check for transitions that should earn points for the player who executed it
     """
     def is_move_in_tags(start,end, move=move, G=G) -> bool:
-        # checks if flag is in any of the edge's's tags
+        # checks if flag is in any of the edge's tags
         tags = G.edges[start,end].get('tags')
         return any([move in tag for tag in tags])
-    for u,v in G.edges():
-        if is_move_in_tags(u,v) is True:
+
+    for u, v in G.edges():
+        if is_move_in_tags(u,v):
             G.edges[u, v][move] = True
     return G
 
@@ -44,9 +48,9 @@ def flag_point_earning_move(G,move: str):
 def find_move_by_node_tags(G, position: str):
     """
     finds transitions from:
-    node without <position> in tags --> node with <position> in tags node
+    node without <position> in tags --> node with <position> in tags
 
-    and then marks that transition with a flag that that move occurred
+    and then marks that transition with a new dict item
     """
     # to do: 3 of the mount transitions need to have their top/bottom tags switched
     def node_is_position(node: str,position=position ,G=G) -> bool:
@@ -55,13 +59,13 @@ def find_move_by_node_tags(G, position: str):
         return any([position in tag for tag in tags])
 
     for node in G.nodes():
-        # if this position is not mount
+        # if this node does not have <position> in tags
         if not node_is_position(node):
             # Check all successors of the current node
             for successor in G.successors(node):
-                # Check if the successor position is mount
+                # Check if the successor node has <position>
                 if node_is_position(successor):
-                    # Transition to mount found, adding flag to this edge
+                    # Transition to the node with the position is found, adding flag to this edge
                     G.edges[node, successor][position] = True
 
     return G
@@ -73,7 +77,7 @@ def find_and_tag_all_moves(G):
     G = find_move_by_node_tags(G, 'mount')
     # backtakes
     G = find_move_by_node_tags(G, 'back')
-    # takedowns # note: both of these describe the same point earning move
+    # takedowns: note that both of these describe the same point earning move
     G = flag_point_earning_move(G, 'throw')
     G = flag_point_earning_move(G, 'takedown')
     # guard passes
