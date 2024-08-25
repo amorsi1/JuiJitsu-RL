@@ -1,7 +1,11 @@
 import random
 import networkx as nx
+from tqdm import tqdm
+import numpy as np
 from typing import List, Tuple, Dict, Optional
 from Graph.graph_constructor import construct_graph
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 class Board:
     def __init__(self, graph: nx.Graph):
@@ -125,10 +129,11 @@ class Player:
 #         return points, game_ended
 
 class Game:
-    def __init__(self, name: str, graph: nx.Graph):
+    def __init__(self, name: str):
         self.name = name
-        self.board = Board(graph)
+        self.board = Board(construct_graph())
         self.game_state = GameState(self.board)
+        self.turn_count = 0
         self.player1: Optional[Player] = None
         self.player2: Optional[Player] = None
         self.current_player: Optional[Player] = None
@@ -181,32 +186,35 @@ class Game:
                 self.play_turn()
             else:
                 print(f"No moves available for {self.current_player.name}. Switching players.")
+                # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
                 return self._switch_players()
+        else:
+            move = self.current_player.choose_move(possible_moves)
+            points, player_tapped, swap_players_positions = self.game_state.process_move(move)
+            self.current_player.points += points
+            print(f"{self.current_player.name} performed '{move[1]['description']}'")
+            if points>0:
+                print(f'Player earned {points} points for that move')
 
-        move = self.current_player.choose_move(possible_moves)
-        points, player_tapped, swap_players_positions = self.game_state.process_move(move)
-        self.current_player.points += points
-        print(f"{self.current_player.name} made a move and earned {points} points.")
+            if player_tapped:
+                winning_player = self.choose_other_player(self.current_player)
+                print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
+                self.winner = winning_player
+                return True
 
-        if player_tapped:
-            winning_player = self.choose_other_player(self.current_player)
-            print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
-            self.winner = winning_player
-            return True
+            winner = self.game_state.check_winner()
+            if winner:
+                # arriving at this node means that one of the players has won already
+                winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
+                                                  (self.player1.is_bottom and winner == 'bottom')) else self.player2
+                self.winner = winning_player
+                print(f"{winning_player.name} won by reaching a winning position!")
+                return True
 
-        winner = self.game_state.check_winner()
-        if winner:
-            # arriving at this node means that one of the players has won already
-            winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
-                                              (self.player1.is_bottom and winner == 'bottom')) else self.player2
-            self.winner = winning_player
-            print(f"{winning_player.name} won by reaching a winning position!")
-            return True
+            if swap_players_positions:
+                self._swap_players_positions()
 
-        if swap_players_positions:
-            self._swap_players_positions()
-
-        return self._switch_players()
+            return self._switch_players()
 
     def _switch_players(self) -> bool:
         self.current_player = self.player2 if self.current_player is self.player1 else self.player1
@@ -221,8 +229,10 @@ class Game:
             print(f"{self.player2.name} wins!")
         else:
             print("It's a tie!")
+
     def play_game(self, max_turns: int = 100):
         for turn in range(1, max_turns + 1):
+            self.turn_count += 1
             print(f"\nTurn {turn}:")
             if self.play_turn():
                 break
@@ -235,9 +245,70 @@ class Game:
         print(f"{self.player1.name}: {self.player1.points}")
         print(f"{self.player2.name}: {self.player2.points}")
 
+class Simulation:
+    def __init__(self, num_games: int):
+        self.num_games = num_games
+        self.games = []
+        self.results = []
 
-# Usage
-graph = construct_graph()
-game = Game("BJJ Simulation", graph)
-game.initialize_game("Player 1", "Player 2")
-game.play_game()
+    def initialize_games(self):
+        print('Initializing games')
+        self.games = [Game(f"Game_{i}") for i in range(self.num_games)]
+        for game in tqdm(self.games):
+            game.initialize_game(f"Player1_{game.name}", f"Player2_{game.name}")
+
+    def run_games(self, max_turns: int = 100):
+        print('running games')
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self.play_single_game, game, max_turns) for game in self.games]
+            for future in tqdm(as_completed(futures)):
+                self.results.append(future.result())
+
+    def play_single_game(self, game: Game, max_turns: int) -> Dict:
+        game.play_game(max_turns)
+        return {
+            'game_name': game.name,
+            'player1_name': game.player1.name,
+            'player2_name': game.player2.name,
+            'winner': game.winner.name if game.winner else 'Tie',
+            'player1_points': game.player1.points,
+            'player2_points': game.player2.points,
+            'num_turns': game.turn_count
+        }
+
+    def agg_results(self) -> List[Dict]:
+        print("SIMULATION RESULTS:")
+        results = self.results
+        player1_wins = 0
+        player2_wins = 0
+        num_ties = 0
+        for result in results:
+            if result['winner'] == result['player1_name']:
+                player1_wins += 1
+            elif result['winner'] == result['player2_name']:
+                player2_wins += 1
+            else:
+                num_ties += 1
+        print(f'Player 1 won {player1_wins} games out of {len(results)} ({round(player1_wins/len(results),2)})')
+        print(f'Player 2 won {player2_wins} games out of {len(results)} ({round(player2_wins / len(results),2)})')
+        if num_ties > 0:
+            print(f'there were {num_ties} ties')
+        num_turns = [i['num_turns'] for i in results]
+        print(f'On average, games lasted {np.mean(num_turns)} with a min of {np.minimum(num_turns)} and a max of {np.maximum(num_turns)}')
+
+        return self.results
+
+    def reset(self):
+        self.games = []
+        self.results = []
+
+# Single game example
+# game = Game("BJJ Simulation")
+# game.initialize_game("Player 1", "Player 2")
+# game.play_game()
+
+# Parallel multi-threaded example
+simulation = Simulation(num_games=100)
+simulation.initialize_games()
+simulation.run_games(max_turns=200)
+simulation.agg_results()
