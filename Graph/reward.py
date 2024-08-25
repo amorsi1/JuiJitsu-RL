@@ -6,7 +6,7 @@ def load_json(fpath):
         return json.load(file)
 
 
-def add_terminal_win_states(G, json_path='files/terminal_node_winstate.json'):
+def add_terminal_win_states(G, json_path='/Users/afmorsi/dev/JJ_RL/Graph/files/terminal_node_winstate.json'):
     """add annotations of which nodes are considered a win """
     with open(json_path, 'r') as file:
         terminal_win_nodes = json.load(file)
