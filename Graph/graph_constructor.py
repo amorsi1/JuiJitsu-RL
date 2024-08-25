@@ -1,6 +1,6 @@
 import json
 import networkx as nx
-from reward import add_rewards_to_graph
+from Graph.reward import add_rewards_to_graph
 from typing import List, Tuple, Dict
 import copy
 
@@ -75,7 +75,9 @@ def refactor_incoming_and_outgoing(G: nx.DiGraph) -> nx.DiGraph:
             assert len(edge) == 3, "3 items expected per edge. Check that data=True is passed to G.out_edges or G.in_edges"
             edge_data = edge[2]
             edge_id = edge_data['id']
-            transitions_in_or_out.append({'transition': edge_id,
+            transitions_in_or_out.append({'transition': edge_id, # is edge id needed if from and to are there? could be imported for agent learning
+                                          'from': edge[0],
+                                          'to': edge[1],
                                           'swaps_players': edge_data['swaps_players'],
                                           'top': edge_data['top'],
                                           'bottom': edge_data['bottom']})
@@ -88,8 +90,8 @@ def refactor_incoming_and_outgoing(G: nx.DiGraph) -> nx.DiGraph:
         out_refactor = create_edge_dict(out_edges)
         in_refactor = create_edge_dict(in_edges)
         # Update only the 'incoming' and 'outgoing' attributes
-        G.nodes[node]['incoming'] = out_refactor
-        G.nodes[node]['outgoing'] = in_refactor
+        G.nodes[node]['outgoing'] = out_refactor
+        G.nodes[node]['incoming'] = in_refactor
 
     return G
 
@@ -98,7 +100,9 @@ def refactor_incoming_and_outgoing(G: nx.DiGraph) -> nx.DiGraph:
 def load_json(fpath):
     with open(fpath, 'r') as file:
         return json.load(file)
-def construct_graph(nodes_path = 'files/nodes.json',transitions_path = 'files/transitions.json') -> nx.classes.digraph.DiGraph:
+
+def construct_graph(nodes_path='/Users/afmorsi/dev/JJ_RL/Graph/files/nodes.json',
+                    transitions_path='/Users/afmorsi/dev/JJ_RL/Graph/files/transitions.json') -> nx.classes.digraph.DiGraph:
 
     nodes = load_json(nodes_path)
     transitions = load_json(transitions_path)
