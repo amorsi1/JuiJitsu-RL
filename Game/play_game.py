@@ -95,39 +95,6 @@ class Player:
         # Implement other strategies here
         return random.choice(possible_moves)
 
-# class MoveProcessor:
-#     def __init__(self, game_state: GameState):
-#         self.game_state = game_state
-#
-#     def get_possible_moves(self, player: Player) -> List[Tuple[int, Dict]]:
-#         """Get all possible moves for the current player."""
-#         node_data = self.game_state.get_node_data()
-#         position = 'top' if player.is_top else 'bottom'
-#         possible_moves = []
-#         for edge in node_data['outgoing']:
-#             edge_data = self.game_state.graph.edges[self.game_state.current_node, edge['transition']]
-#             if position in edge_data.get('properties', []):
-#                 possible_moves.append((edge['transition'], edge_data))
-#         return possible_moves
-#
-#     def process_move(self, player: Player, move: Tuple[int, Dict]) -> Tuple[int, bool]:
-#         """Process the chosen move and return the points earned and if the game ended."""
-#         new_node, edge_data = move
-#         points = 0
-#         game_ended = False
-#
-#         # Check for point-earning moves
-#         for move_type in ['sweep', 'mount', 'back', 'throw', 'takedown', 'pass']:
-#             if edge_data.get(move_type, False):
-#                 points += 2  # Assuming all moves are worth 2 points for simplicity
-#
-#         # Check for submission
-#         if edge_data.get('tap', False):
-#             game_ended = True
-#
-#         self.game_state.update(new_node)
-#         return points, game_ended
-
 class Game:
     def __init__(self, name: str):
         self.name = name
@@ -303,12 +270,12 @@ class Simulation:
         self.results = []
 
 # Single game example
-# game = Game("BJJ Simulation")
-# game.initialize_game("Player 1", "Player 2")
-# game.play_game()
+game = Game("BJJ Simulation")
+game.initialize_game("Player 1", "Player 2")
+game.play_game()
 
 # Parallel multi-threaded example
-simulation = Simulation(num_games=100)
-simulation.initialize_games()
-simulation.run_games(max_turns=200)
-simulation.agg_results()
+# simulation = Simulation(num_games=100)
+# simulation.initialize_games()
+# simulation.run_games(max_turns=200)
+# simulation.agg_results()
