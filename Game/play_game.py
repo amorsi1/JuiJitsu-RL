@@ -12,7 +12,7 @@ class Board:
         self.graph = graph
         self.rewards = {
             'sweep': 2, 'mount': 4, 'back': 4,
-            'throw': 2, 'takedown': 4, 'pass': 3}
+            'throw': 2, 'takedown': 2, 'pass': 3}
 
     def get_node_data(self, node: int) -> Dict:
         return self.graph.nodes[node]
@@ -44,7 +44,7 @@ class GameState:
 
         Note that this logic assumes the player can perform all moves, then filters out ones that are not possible in
         that position (i.e. top moves from bottom position and vice versa). This is an important distinction because it means
-        that any player can do a move that doesn't have a top or bottom tag on it regardless of their position
+        that any player can perform a move that doesn't have a top or bottom tag on it regardless of their position
         """
         possible_moves = []
         for outgoing_edge in self.board.get_node_data(self.current_node)['outgoing']:
@@ -90,16 +90,18 @@ class Player:
         self.strategy = strategy
 
     def choose_move(self, possible_moves: List[Tuple[int, Dict]]) -> Tuple[int, Dict]:
+        assert possible_moves, "empty list of possible_moves passed to choose_move"
         if self.strategy == 'random':
             return random.choice(possible_moves)
         # Implement other strategies here
         return random.choice(possible_moves)
 
 class Game:
-    def __init__(self, name: str):
+    def __init__(self, name: str, max_turns=100):
         self.name = name
         self.board = Board(construct_graph())
         self.game_state = GameState(self.board)
+        self.max_turns = max_turns
         self.turn_count = 0
         self.player1: Optional[Player] = None
         self.player2: Optional[Player] = None
@@ -142,48 +144,51 @@ class Game:
         self.player1.is_top, self.player1.is_top = self.player2.is_top, self.player2.is_top
         self.player2.is_top, self.player2.is_top = cache
 
-    def play_turn(self) -> bool:
-        possible_moves = self.game_state.get_possible_moves(self.current_player.is_top, self.current_player.is_bottom)
-        if not possible_moves:
-            # if current state is a terminal node, but not associated with a win or loss
-            if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
-                # change to random node, then allow player to play their turn
-                print('Terminal position encountered. switching to random position ')
-                self.game_state.initialize()
-                self.play_turn()
-            else:
-                print(f"No moves available for {self.current_player.name}. Switching players.")
-                # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
-                return self._switch_players()
+    def play_turn(self, chosen_move: Tuple[int, Dict]=None) -> bool:
+        if chosen_move:
+            move = chosen_move
         else:
-            move = self.current_player.choose_move(possible_moves)
-            points, player_tapped, swap_players_positions = self.game_state.process_move(move)
-            self.current_player.points += points
-            print(f"{self.current_player.name} performed '{move[1]['description']}'")
-            if points>0:
-                print(f'Player earned {points} points for that move')
+            possible_moves = self.game_state.get_possible_moves(self.current_player.is_top, self.current_player.is_bottom)
+            if not possible_moves:
+                # if current state is a terminal node, but not associated with a win or loss
+                if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
+                    # change to random node, then allow player to play their turn
+                    print('Terminal position encountered. switching to random position ')
+                    self.game_state.initialize()
+                    return self.play_turn()
+                else:
+                    print(f"No moves available for {self.current_player.name}. Switching players.")
+                    # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
+                    return self.switch_players()
+            else:
+                move = self.current_player.choose_move(possible_moves)
+        points, player_tapped, swap_players_positions = self.game_state.process_move(move)
+        self.current_player.points += points
+        print(f"{self.current_player.name} performed '{move[1]['description']}'")
+        if points>0:
+            print(f'Player earned {points} points for that move')
 
-            if player_tapped:
-                winning_player = self.choose_other_player(self.current_player)
-                print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
-                self.winner = winning_player
-                return True
+        if player_tapped:
+            winning_player = self.choose_other_player(self.current_player)
+            print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
+            self.winner = winning_player
+            return True
 
-            winner = self.game_state.check_winner()
-            if winner:
-                # arriving at this node means that one of the players has won already
-                winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
-                                                  (self.player1.is_bottom and winner == 'bottom')) else self.player2
-                self.winner = winning_player
-                print(f"{winning_player.name} won by reaching a winning position!")
-                return True
+        winner = self.game_state.check_winner()
+        if winner:
+            # arriving at this node means that one of the players has won already
+            winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
+                                              (self.player1.is_bottom and winner == 'bottom')) else self.player2
+            self.winner = winning_player
+            print(f"{winning_player.name} won by reaching a winning position!")
+            return True
 
-            if swap_players_positions:
-                self._swap_players_positions()
+        if swap_players_positions:
+            self._swap_players_positions()
 
-            return self._switch_players()
+        return self.switch_players()
 
-    def _switch_players(self) -> bool:
+    def switch_players(self) -> bool:
         self.current_player = self.player2 if self.current_player is self.player1 else self.player1
         return False
 
@@ -197,7 +202,8 @@ class Game:
         else:
             print("It's a tie!")
 
-    def play_game(self, max_turns: int = 100):
+    def play_game(self):
+        max_turns = self.max_turns
         for turn in range(1, max_turns + 1):
             self.turn_count += 1
             print(f"\nTurn {turn}:")
@@ -218,21 +224,21 @@ class Simulation:
         self.games = []
         self.results = []
 
-    def initialize_games(self):
+    def initialize_games(self, num_turns: int = 100):
         print('Initializing games')
-        self.games = [Game(f"Game_{i}") for i in range(self.num_games)]
+        self.games = [Game(f"Game_{i}", max_turns= num_turns) for i in range(self.num_games)]
         for game in tqdm(self.games):
             game.initialize_game(f"Player1_{game.name}", f"Player2_{game.name}")
 
-    def run_games(self, max_turns: int = 100):
+    def run_games(self):
         print('running games')
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.play_single_game, game, max_turns) for game in self.games]
+            futures = [executor.submit(self.play_single_game, game) for game in self.games]
             for future in tqdm(as_completed(futures)):
                 self.results.append(future.result())
 
-    def play_single_game(self, game: Game, max_turns: int) -> Dict:
-        game.play_game(max_turns)
+    def play_single_game(self, game: Game) -> Dict:
+        game.play_game()
         return {
             'game_name': game.name,
             'player1_name': game.player1.name,
