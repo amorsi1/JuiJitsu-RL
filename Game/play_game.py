@@ -33,7 +33,7 @@ class GameState:
         self.current_node = random.choice([94, random.choice(list(self.board.graph.nodes()))])
 
     def update(self, new_node: int):
-        print(f'moving to position {self.board.get_node_data(new_node)['description']}')
+        print(f"moving to position {self.board.get_node_data(new_node)['description']}")
         self.current_node = new_node
 
     def get_possible_moves(self, is_top: bool, is_bottom: bool) -> List[Tuple[int, Dict]]:
@@ -61,7 +61,7 @@ class GameState:
 
         return possible_moves
 
-    def process_move(self, move: Tuple[int, Dict]) -> tuple[int, bool, bool]:
+    def process_move(self, move: Tuple[int, Dict]) -> Tuple[int, bool, bool]:
         new_node, edge_data = move
         points = self._calculate_points(edge_data)
         player_tapped = edge_data.get('tap', False)
@@ -140,9 +140,9 @@ class Game:
         """
         gives each player the other players' top and bottom position attributes
         """
-        cache = (self.player1.is_top, self.player1.is_top)
-        self.player1.is_top, self.player1.is_top = self.player2.is_top, self.player2.is_top
-        self.player2.is_top, self.player2.is_top = cache
+        cache = (self.player1.is_top, self.player1.is_bottom)
+        self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
+        self.player2.is_top, self.player2.is_bottom = cache
 
     def play_turn(self, chosen_move: Tuple[int, Dict]=None) -> bool:
         if chosen_move:
