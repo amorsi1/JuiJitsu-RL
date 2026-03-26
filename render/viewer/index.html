@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>BJJ RL - 3D Viewer</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; }
+        #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #turnControl {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            font-family: monospace;
+        }
+        #turnLabel {
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+        #turnSwitch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+            background: rgba(7, 11, 24, 0.7);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+        }
+        .turnSide {
+            min-width: 92px;
+            padding: 11px 18px;
+            border: 0;
+            color: rgba(255, 255, 255, 0.74);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: default;
+            transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease, color 120ms ease;
+        }
+        .turnSide.blue {
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+        }
+        .turnSide.red {
+            background: linear-gradient(180deg, #ff6767 0%, #c91e1e 100%);
+        }
+        .turnSide:not(.active) {
+            filter: saturate(0.5) brightness(0.72);
+        }
+        .turnSide.active {
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="status">Connecting...</div>
+    <div id="turnControl">
+        <div id="turnLabel">Turn</div>
+        <div id="turnSwitch" role="group" aria-label="Active player turn">
+            <button id="blueTurnButton" class="turnSide blue active" type="button" aria-pressed="true">Blue</button>
+            <button id="redTurnButton" class="turnSide red" type="button" aria-pressed="false">Red</button>
+        </div>
+    </div>
+    <script>
+    // === Joint indices (23 joints per player) ===
+    const LeftToe=0, RightToe=1, LeftHeel=2, RightHeel=3,
+          LeftAnkle=4, RightAnkle=5, LeftKnee=6, RightKnee=7,
+          LeftHip=8, RightHip=9, LeftShoulder=10, RightShoulder=11,
+          LeftElbow=12, RightElbow=13, LeftWrist=14, RightWrist=15,
+          LeftHand=16, RightHand=17, LeftFingers=18, RightFingers=19,
+          Core=20, Neck=21, Head=22;
+
+    const NUM_JOINTS = 23;
+
+    // === Segments: [[from_joint, to_joint], length, radius_center, tapered] ===
+    const segments = [
+        [[LeftToe, LeftHeel], 0.23, 0.025, true],
+        [[LeftToe, LeftAnkle], 0.18, 0.025, true],
+        [[LeftHeel, LeftAnkle], 0.09, 0.025, true],
+        [[LeftAnkle, LeftKnee], 0.43, 0.055, true],
+        [[LeftKnee, LeftHip], 0.43, 0.085, true],
+        [[LeftHip, Core], 0.27, 0.1, true],
+        [[Core, LeftShoulder], 0.37, 0.075, true],
+        [[LeftShoulder, LeftElbow], 0.29, 0.06, true],
+        [[LeftElbow, LeftWrist], 0.26, 0.03, true],
+        [[LeftWrist, LeftHand], 0.08, 0.02, true],
+        [[LeftHand, LeftFingers], 0.08, 0.02, true],
+        [[LeftWrist, LeftFingers], 0.14, 0.02, false],
+        [[RightToe, RightHeel], 0.23, 0.025, true],
+        [[RightToe, RightAnkle], 0.18, 0.025, true],
+        [[RightHeel, RightAnkle], 0.09, 0.025, true],
+        [[RightAnkle, RightKnee], 0.43, 0.055, true],
+        [[RightKnee, RightHip], 0.43, 0.085, true],
+        [[RightHip, Core], 0.27, 0.1, true],
+        [[Core, RightShoulder], 0.37, 0.075, true],
+        [[RightShoulder, RightElbow], 0.29, 0.06, true],
+        [[RightElbow, RightWrist], 0.26, 0.03, true],
+        [[RightWrist, RightHand], 0.08, 0.02, true],
+        [[RightHand, RightFingers], 0.08, 0.02, true],
+        [[RightWrist, RightFingers], 0.14, 0.02, false],
+        [[LeftHip, RightHip], 0.23, 0.1, false],
+        [[LeftShoulder, Neck], 0.175, 0.065, true],
+        [[RightShoulder, Neck], 0.175, 0.065, true],
+        [[Neck, Head], 0.165, 0.05, true],
+    ];
+
+    // === Joints: [radius, render_as_sphere] ===
+    const joints = [
+        [0.025, false], [0.025, false], [0.03, false], [0.03, false],
+        [0.03, true], [0.03, true], [0.05, true], [0.05, true],
+        [0.09, true], [0.09, true], [0.08, true], [0.08, true],
+        [0.045, true], [0.045, true], [0.02, false], [0.02, false],
+        [0.02, true], [0.02, true], [0.02, false], [0.02, false],
+        [0.1, false], [0.05, false], [0.11, true],
+    ];
+
+    // === Babylon.js setup ===
+    const canvas = document.getElementById('renderCanvas');
+    const engine = new BABYLON.Engine(canvas, true);
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0.1, 0.1, 0.18, 1);
+
+    const camera = new BABYLON.ArcRotateCamera('cam', Math.PI / 2, Math.PI / 3, 3, new BABYLON.Vector3(0, 0.5, 0), scene);
+    camera.attachControl(canvas, true);
+    camera.lowerRadiusLimit = 1;
+    camera.upperRadiusLimit = 8;
+
+    const light = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.9;
+    const dirLight = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-1, -2, 1), scene);
+    dirLight.intensity = 0.5;
+
+    // Ground grid
+    const gridSize = 4;
+    const grey = new BABYLON.Color3(0.35, 0.35, 0.4);
+    for (let i = -gridSize; i <= gridSize; i++) {
+        const lx = BABYLON.MeshBuilder.CreateLines("lx", {
+            points: [new BABYLON.Vector3(i, 0, -gridSize), new BABYLON.Vector3(i, 0, gridSize)]
+        }, scene);
+        lx.color = grey;
+        const lz = BABYLON.MeshBuilder.CreateLines("lz", {
+            points: [new BABYLON.Vector3(-gridSize, 0, i), new BABYLON.Vector3(gridSize, 0, i)]
+        }, scene);
+        lz.color = grey;
+    }
+
+    // === Player materials ===
+    const skins = [
+        new BABYLON.StandardMaterial("redskin", scene),
+        new BABYLON.StandardMaterial("blueskin", scene)
+    ];
+    skins[0].diffuseColor = new BABYLON.Color3(0.8, 0.15, 0.1);
+    skins[1].diffuseColor = new BABYLON.Color3(0.1, 0.2, 0.85);
+    skins[0].specularColor = new BABYLON.Color3(1, 0.3, 0.2);
+    skins[1].specularColor = new BABYLON.Color3(0.2, 0.3, 1);
+    skins[0].specularPower = 8;
+    skins[1].specularPower = 8;
+
+    // === Cylinder geometry (from GrappleMap gm.js) ===
+    function cylinderPaths(fromRadius, toRadius, from, to, faces) {
+        const dir = to.subtract(from);
+        let a = BABYLON.Vector3.Cross(dir, new BABYLON.Vector3(1, 1, 1).subtract(from)).normalize();
+        if (a.length() < 0.001) a = BABYLON.Vector3.Cross(dir, BABYLON.Vector3.Right()).normalize();
+        const b = BABYLON.Vector3.Cross(dir, a).normalize();
+        const s = (Math.PI * 2) / faces;
+        const p0 = [], p1 = [];
+        for (let i = faces; i >= 0; --i) {
+            p0.push(from.add(a.scale(fromRadius * Math.sin(i * s))).add(b.scale(fromRadius * Math.cos(i * s))));
+            p1.push(to.add(a.scale(toRadius * Math.sin(i * s))).add(b.scale(toRadius * Math.cos(i * s))));
+        }
+        return [p0, p1];
+    }
+
+    function animatedCylinder(fromRadius, toRadius, from, to, faces, scene) {
+        const path = cylinderPaths(fromRadius, toRadius, from, to, faces);
+        const mesh = BABYLON.MeshBuilder.CreateRibbon("seg", { pathArray: path, updatable: true }, scene);
+        let positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        let indices = mesh.getIndices();
+        let normals = new Float32Array(positions.length);
+
+        mesh.update = function(from_, to_) {
+            const paths = cylinderPaths(fromRadius, toRadius, from_, to_, faces);
+            let i = 0;
+            for (let pl = 0; pl < 2; pl++) {
+                for (let face = 0; face <= faces; face++) {
+                    const v = paths[pl][face];
+                    positions[i++] = v.x; positions[i++] = v.y; positions[i++] = v.z;
+                }
+            }
+            mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions, true);
+            BABYLON.VertexData.ComputeNormals(positions, indices, normals);
+            mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        };
+        return mesh;
+    }
+
+    // === Build player meshes ===
+    function toVec3(arr) { return new BABYLON.Vector3(arr[0], arr[1], arr[2]); }
+
+    function createPlayer(initJoints, material) {
+        const segUpdaters = [];
+
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            if (!seg[3]) { segUpdaters.push(null); continue; } // skip non-tapered
+
+            const jFrom = seg[0][0], jTo = seg[0][1];
+            const rFrom = joints[jFrom][0], rTo = joints[jTo][0], rCenter = seg[2];
+            const from = toVec3(initJoints[jFrom]), to = toVec3(initJoints[jTo]);
+            const center = from.add(to).scale(0.5);
+
+            const c1 = animatedCylinder(rFrom, rCenter, from, center, 10, scene);
+            const c2 = animatedCylinder(rCenter, rTo, center, to, 10, scene);
+            c1.material = material;
+            c2.material = material;
+
+            segUpdaters.push(function(f, t) {
+                const mid = f.add(t).scale(0.5);
+                c1.update(f, mid);
+                c2.update(mid, t);
+            });
+        }
+
+        const spheres = [];
+        for (let j = 0; j < NUM_JOINTS; j++) {
+            const sphere = BABYLON.MeshBuilder.CreateSphere('j' + j, { diameter: joints[j][0] * 2, segments: 6 }, scene);
+            sphere.material = material;
+            sphere.position = toVec3(initJoints[j]);
+            spheres.push(sphere);
+        }
+
+        return function(playerJoints) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                spheres[j].position = toVec3(playerJoints[j]);
+            }
+            for (let s = 0; s < segments.length; s++) {
+                if (segUpdaters[s]) {
+                    segUpdaters[s](toVec3(playerJoints[segments[s][0][0]]), toVec3(playerJoints[segments[s][0][1]]));
+                }
+            }
+        };
+    }
+
+    // === State ===
+    let playerUpdaters = null;
+    let currentPos = null;       // current displayed position [player0, player1]
+    let currentReo = null;       // incremental explorer-style reorientation state
+    let lastKeyframe = null;     // last settled keyframe in world space
+    const queuedFrames = [];     // transformed keyframes waiting to be played
+    let animK = 0;               // interpolation factor [0,1) to the next queued keyframe
+
+    function initPlayers(posData) {
+        if (playerUpdaters) return; // already created
+        playerUpdaters = [
+            createPlayer(posData[0], skins[0]),
+            createPlayer(posData[1], skins[1])
+        ];
+    }
+
+    // === Interpolation (replicates GrappleMap's interpolate_position) ===
+    function lerpJoint(a, b, t) {
+        return [
+            a[0] + (b[0] - a[0]) * t,
+            a[1] + (b[1] - a[1]) * t,
+            a[2] + (b[2] - a[2]) * t
+        ];
+    }
+
+    function interpolatePosition(posA, posB, t) {
+        const result = [[], []];
+        for (let pl = 0; pl < 2; pl++) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                result[pl].push(lerpJoint(posA[pl][j], posB[pl][j], t));
+            }
+        }
+        return result;
+    }
+
+    function addVec3(a, b) {
+        return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    }
+
+    function negateVec3(v) {
+        return [-v[0], -v[1], -v[2]];
+    }
+
+    function yRotate(angle, v) {
+        return [
+            Math.cos(angle) * v[0] + Math.sin(angle) * v[2],
+            v[1],
+            -Math.sin(angle) * v[0] + Math.cos(angle) * v[2]
+        ];
+    }
+
+    function swap(arr, a, b) {
+        const temp = arr[a];
+        arr[a] = arr[b];
+        arr[b] = temp;
+    }
+
+    function swapLimbs(player) {
+        swap(player, LeftShoulder, RightShoulder);
+        swap(player, LeftElbow, RightElbow);
+        swap(player, LeftHand, RightHand);
+        swap(player, LeftFingers, RightFingers);
+        swap(player, LeftWrist, RightWrist);
+        swap(player, LeftAnkle, RightAnkle);
+        swap(player, LeftToe, RightToe);
+        swap(player, LeftHip, RightHip);
+        swap(player, LeftHeel, RightHeel);
+        swap(player, LeftKnee, RightKnee);
+    }
+
+    function mirrorPosition(pos) {
+        for (let pl = 0; pl < 2; pl++) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                pos[pl][j][0] = -pos[pl][j][0];
+            }
+            swapLimbs(pos[pl]);
+        }
+    }
+
+    function copyReo(reo) {
+        return {
+            mirror: reo.mirror,
+            swap_players: reo.swap_players,
+            angle: reo.angle,
+            offset: [...reo.offset]
+        };
+    }
+
+    function zeroReo() {
+        return {
+            mirror: false,
+            swap_players: false,
+            angle: 0,
+            offset: [0, 0, 0]
+        };
+    }
+
+    function applyReo(reo, pos) {
+        let transformed = pos.map((player) =>
+            player.map((joint) => addVec3(yRotate(reo.angle, joint), reo.offset))
+        );
+
+        if (reo.mirror) {
+            mirrorPosition(transformed);
+        }
+
+        if (reo.swap_players) {
+            transformed = [transformed[1], transformed[0]];
+        }
+
+        return transformed;
+    }
+
+    function inverseReo(reo) {
+        const inverted = {
+            offset: yRotate(-reo.angle, negateVec3(reo.offset)),
+            angle: -reo.angle,
+            mirror: reo.mirror,
+            swap_players: reo.swap_players
+        };
+
+        if (reo.mirror) {
+            inverted.angle = -inverted.angle;
+            inverted.offset[0] = -inverted.offset[0];
+        }
+
+        return inverted;
+    }
+
+    function composeReo(a, b) {
+        const combined = {
+            mirror: a.mirror !== b.mirror,
+            swap_players: a.swap_players !== b.swap_players,
+            angle: 0,
+            offset: [0, 0, 0]
+        };
+
+        if (a.mirror) {
+            const mirroredOffset = [-b.offset[0], b.offset[1], b.offset[2]];
+            combined.angle = a.angle - b.angle;
+            combined.offset = addVec3(mirroredOffset, yRotate(-b.angle, a.offset));
+        } else {
+            combined.angle = a.angle + b.angle;
+            combined.offset = addVec3(b.offset, yRotate(b.angle, a.offset));
+        }
+
+        return combined;
+    }
+
+    // === Frame doubling (replicates GrappleMap's double_frames) ===
+    // For non-detailed transitions, insert a midpoint between each
+    // pair of consecutive keyframes for smoother playback.
+    function doubleFrames(frames) {
+        if (frames.length < 2) return frames;
+        const result = [frames[0]];
+        for (let i = 0; i < frames.length - 1; i++) {
+            result.push(interpolatePosition(frames[i], frames[i + 1], 0.5));
+            result.push(frames[i + 1]);
+        }
+        return result;
+    }
+
+    function updateDisplay() {
+        if (!playerUpdaters || !currentPos) return;
+        for (let pl = 0; pl < 2; pl++) {
+            playerUpdaters[pl](currentPos[pl]);
+        }
+    }
+
+    function queueTransitionFrames(msg) {
+        let frames = msg.frames;
+        if (!frames || frames.length === 0) {
+            return;
+        }
+
+        if (!msg.detailed) {
+            frames = doubleFrames(frames);
+        }
+
+        const startReo = msg.reverse
+            ? composeReo(inverseReo(msg.to_reo), currentReo)
+            : composeReo(inverseReo(msg.from_reo), currentReo);
+
+        if (!currentPos) {
+            const startFrame = msg.reverse ? frames[frames.length - 1] : frames[0];
+            const startPos = applyReo(startReo, startFrame);
+            if (!playerUpdaters) initPlayers(startPos);
+            currentPos = startPos;
+            lastKeyframe = startPos;
+        }
+
+        if (msg.reverse) {
+            for (let i = frames.length - 1; i > 0; i--) {
+                const isLast = (i === 1);
+                queuedFrames.push({
+                    pos: applyReo(startReo, frames[i - 1]),
+                    turn: isLast ? (msg.turn || null) : null
+                });
+            }
+            currentReo = composeReo(msg.from_reo, startReo);
+        } else {
+            for (let i = 1; i < frames.length; i++) {
+                const isLast = (i === frames.length - 1);
+                queuedFrames.push({
+                    pos: applyReo(startReo, frames[i]),
+                    turn: isLast ? (msg.turn || null) : null
+                });
+            }
+            currentReo = composeReo(msg.to_reo, startReo);
+        }
+    }
+
+    // === Render loop ===
+    // This follows GrappleMap's live viewer model: transition messages are
+    // converted into a queue of transformed world-space keyframes, then each
+    // render tick interpolates from the last settled pose to the next one.
+    engine.runRenderLoop(function() {
+        const dt = engine.getDeltaTime(); // ms since last frame
+
+        if (lastKeyframe && queuedFrames.length > 0) {
+            animK += dt / 100;
+
+            while (animK >= 1 && queuedFrames.length > 0) {
+                animK -= 1;
+                const entry = queuedFrames.shift();
+                lastKeyframe = entry.pos;
+                if (entry.turn) setActiveTurn(entry.turn);
+            }
+
+            if (queuedFrames.length > 0) {
+                currentPos = interpolatePosition(lastKeyframe, queuedFrames[0].pos, animK);
+            } else {
+                currentPos = lastKeyframe;
+                animK = 0;
+            }
+        }
+
+        updateDisplay();
+        scene.render();
+    });
+
+    window.addEventListener('resize', () => engine.resize());
+
+    // === WebSocket client ===
+    const statusEl = document.getElementById('status');
+    const blueTurnButton = document.getElementById('blueTurnButton');
+    const redTurnButton = document.getElementById('redTurnButton');
+    let ws;
+    let reconnectTimer;
+
+    function setActiveTurn(turn) {
+        const blueActive = turn === 'blue';
+        blueTurnButton.classList.toggle('active', blueActive);
+        redTurnButton.classList.toggle('active', !blueActive);
+        blueTurnButton.setAttribute('aria-pressed', blueActive ? 'true' : 'false');
+        redTurnButton.setAttribute('aria-pressed', blueActive ? 'false' : 'true');
+    }
+
+    function requestTurnState() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'get_turn' }));
+        }
+    }
+
+    function connect() {
+        ws = new WebSocket('ws://localhost:8765');
+
+        ws.onopen = () => {
+            statusEl.textContent = 'Connected';
+            requestTurnState();
+            setTimeout(() => statusEl.style.opacity = '0.3', 2000);
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            statusEl.style.opacity = '1';
+            if (msg.type === 'turn_state') {
+                if (msg.turn) {
+                    setActiveTurn(msg.turn);
+                }
+                return;
+            }
+
+            if (msg.type === 'position') {
+                const posData = msg.data;
+                if (!playerUpdaters) initPlayers(posData);
+                currentReo = zeroReo();
+                queuedFrames.length = 0;
+                animK = 0;
+                currentPos = posData;
+                lastKeyframe = posData;
+                statusEl.textContent = 'Position: node ' + msg.node_id;
+                if (msg.turn) setActiveTurn(msg.turn);
+            } else if (msg.type === 'transition') {
+                if (!currentReo) {
+                    currentReo = zeroReo();
+                }
+                queueTransitionFrames(msg);
+                statusEl.textContent =
+                    'Transition: ' + msg.transition_id +
+                    (msg.reverse ? ' (reverse)' : '') +
+                    ' [' + queuedFrames.length + ' frames queued]';
+            }
+        };
+
+        ws.onclose = () => {
+            statusEl.textContent = 'Disconnected — reconnecting...';
+            statusEl.style.opacity = '1';
+            reconnectTimer = setTimeout(connect, 2000);
+        };
+
+        ws.onerror = () => ws.close();
+    }
+
+    connect();
+    </script>
+</body>
+</html>

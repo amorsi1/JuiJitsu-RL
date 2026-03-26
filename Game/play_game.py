@@ -97,7 +97,7 @@ class Player:
         return random.choice(possible_moves)
 
 class Game:
-    def __init__(self, name: str, max_turns=100):
+    def __init__(self, name: str, max_turns=100, visualize_3d: bool = False):
         self.name = name
         self.board = Board(construct_graph())
         self.game_state = GameState(self.board)
@@ -107,6 +107,10 @@ class Game:
         self.player2: Optional[Player] = None
         self.current_player: Optional[Player] = None
         self.winner = None
+        self.visualizer = None
+        if visualize_3d:
+            from render.visualizer3d import Visualizer3D
+            self.visualizer = Visualizer3D()
 
     def choose_other_player(self, player: Player) -> Player:
         if player is self.player1:
@@ -121,6 +125,11 @@ class Game:
         self.player2 = Player(p2_name)
         self._randomly_assign_positions()
         self.current_player = random.choice([self.player1, self.player2])
+        if self.visualizer:
+            self.visualizer.update(
+                self.game_state.current_node,
+                active_turn=self._player_turn_color(self.current_player),
+            )
 
     def _randomly_assign_positions(self):
         """
@@ -135,6 +144,9 @@ class Game:
 
         print(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
         print(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
+
+    def _player_turn_color(self, player: Player) -> str:
+        return 'red' if player is self.player1 else 'blue'
 
     def _swap_players_positions(self):
         """
@@ -165,6 +177,20 @@ class Game:
         points, player_tapped, swap_players_positions = self.game_state.process_move(move)
         self.current_player.points += points
         print(f"{self.current_player.name} performed '{move[1]['description']}'")
+        next_player = self.choose_other_player(self.current_player)
+        winner = self.game_state.check_winner()
+        next_turn = (
+            self._player_turn_color(self.current_player)
+            if (player_tapped or winner)
+            else self._player_turn_color(next_player)
+        )
+        if self.visualizer:
+            transition_id = move[1].get('id')
+            self.visualizer.update(
+                self.game_state.current_node,
+                transition_id=transition_id,
+                active_turn=next_turn,
+            )
         if points>0:
             print(f'Player earned {points} points for that move')
 
@@ -174,7 +200,6 @@ class Game:
             self.winner = winning_player
             return True
 
-        winner = self.game_state.check_winner()
         if winner:
             # arriving at this node means that one of the players has won already
             winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
@@ -217,6 +242,8 @@ class Game:
         print("\nGame over! Final scores:")
         print(f"{self.player1.name}: {self.player1.points}")
         print(f"{self.player2.name}: {self.player2.points}")
+        if self.visualizer:
+            self.visualizer.close()
 
 class Simulation:
     def __init__(self, num_games: int):
