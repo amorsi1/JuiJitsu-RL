@@ -12,7 +12,8 @@ dependencies = [
     "plotly>=5.15",
     "scipy>=1.10",
     "tqdm>=4.65",
-    "websockets>=13.0"
+    "websockets>=13.0",
+    "python-dotenv"
 ]
 
 [project.optional-dependencies]
