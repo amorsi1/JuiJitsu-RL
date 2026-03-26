@@ -215,8 +215,6 @@ class Game:
 
     def switch_players(self) -> bool:
         self.current_player = self.player2 if self.current_player is self.player1 else self.player1
-        if self.visualizer:
-            self.visualizer.set_turn(self._player_turn_color(self.current_player))
         return False
 
     def check_for_points_win(self):
