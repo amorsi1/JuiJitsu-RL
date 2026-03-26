@@ -1,5 +1,5 @@
 [project]
-name = "JJ RL"
+name = "JJ_RL"
 version = "0.1.0"
 description = "Train RL agents to play Brazilian Jiu-Jitsu using GrappleMap's position database"
 requires-python = ">=3.10"
@@ -12,6 +12,7 @@ dependencies = [
     "plotly>=5.15",
     "scipy>=1.10",
     "tqdm>=4.65",
+    "websockets>=13.0"
 ]
 
 [project.optional-dependencies]
