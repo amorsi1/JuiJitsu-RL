@@ -1,8 +1,15 @@
 import json
+import os
 import networkx as nx
+from dotenv import load_dotenv
 from Graph.reward import add_rewards_to_graph
 from typing import List, Tuple, Dict
 import copy
+
+load_dotenv(".env.template") # default .env template, safe to commit to repo
+load_dotenv(".env", override=True) # override if a private .env file is provided
+
+GRAPH_FILES_DIR = os.environ.get('GRAPH_FILES_DIR', 'Graph/files')
 
 def add_nodes(node_list: list) -> nx.classes.digraph.DiGraph:
 
@@ -69,7 +76,7 @@ def refactor_incoming_and_outgoing(G: nx.DiGraph) -> nx.DiGraph:
     This will also add some information on the edge that the agent can observe easily, rather than calculate at
     each timestep
     """
-    def create_edge_dict(edge_data: List[Tuple[int, int, Dict]]) -> list[dict[str, bool]]:
+    def create_edge_dict(edge_data: List[Tuple[int, int, Dict]]) -> List[Dict[str, bool]]:
         transitions_in_or_out = []
         for edge in edge_data:
             assert len(edge) == 3, "3 items expected per edge. Check that data=True is passed to G.out_edges or G.in_edges"
@@ -101,8 +108,12 @@ def load_json(fpath):
     with open(fpath, 'r') as file:
         return json.load(file)
 
-def construct_graph(nodes_path='/Users/afmorsi/dev/JJ_RL/Graph/files/nodes.json',
-                    transitions_path='/Users/afmorsi/dev/JJ_RL/Graph/files/transitions.json') -> nx.classes.digraph.DiGraph:
+def construct_graph(nodes_path=None,
+                    transitions_path=None) -> nx.classes.digraph.DiGraph:
+    if nodes_path is None:
+        nodes_path = os.path.join(GRAPH_FILES_DIR, 'nodes.json')
+    if transitions_path is None:
+        transitions_path = os.path.join(GRAPH_FILES_DIR, 'transitions.json')
 
     nodes = load_json(nodes_path)
     transitions = load_json(transitions_path)

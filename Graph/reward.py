@@ -1,4 +1,10 @@
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv(".env.template") # default .env template, safe to commit to repo
+load_dotenv(".env", override=True) # override if a private .env file is provided
+GRAPH_FILES_DIR = os.environ.get('GRAPH_FILES_DIR', 'Graph/files')
 
 
 def load_json(fpath):
@@ -6,7 +12,9 @@ def load_json(fpath):
         return json.load(file)
 
 
-def add_terminal_win_states(G, json_path='/Users/afmorsi/dev/JJ_RL/Graph/files/terminal_node_winstate.json'):
+def add_terminal_win_states(G, json_path=None):
+    if json_path is None:
+        json_path = os.path.join(GRAPH_FILES_DIR, 'terminal_node_winstate.json')
     """add annotations of which nodes are considered a win """
     with open(json_path, 'r') as file:
         terminal_win_nodes = json.load(file)
