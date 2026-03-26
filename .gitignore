@@ -1,10 +1,13 @@
+#ignore files that start with a period
+.*
+
+# but keep .env template
+!.env.template
+
+# ignore python cache files
 __pycache__/
 *.pyc
-*.pyo
-.venv/
-*.egg-info/
-dist/
+# Ignore build directories
 build/
-.context/
-CLAUDE/
+dist/
 
