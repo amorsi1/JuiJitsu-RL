@@ -11,3 +11,5 @@ __pycache__/
 build/
 dist/
 
+# let the LLM track its notes
+!.claude/
