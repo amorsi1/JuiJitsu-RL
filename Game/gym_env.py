@@ -36,18 +36,18 @@ class BJJEnv(gym.Env):
             "position": spaces.Discrete(self.num_nodes),
             "current player": spaces.Discrete(2), # Player1 is 0 and Player2 is 1
             "current player on top": spaces.Discrete(2),  # 0 is False and 1 is True
-            'player1_score': spaces.Box(low=0, high=200, shape=(1,), dtype=int),
-            'player2_score': spaces.Box(low=0, high=200, shape=(1,), dtype=int),
-            "turn_num": spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=int)
+            'player1_score': spaces.Box(low=0, high=200, shape=(1,), dtype=np.int32),
+            'player2_score': spaces.Box(low=0, high=200, shape=(1,), dtype=np.int32),
+            "turn_num": spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=np.int32)
         })
 
         # Define observation space
         self.observation_space = spaces.Dict({
             'current_position': spaces.Discrete(self.num_nodes),
-            'point_difference': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=int),
+            'point_difference': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.int32),
             'on_top': spaces.Discrete(2),
             'on_bottom': spaces.Discrete(2),
-            'turns_left': spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=int)
+            'turns_left': spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=np.int32)
         })
 
     def _get_state(self):
@@ -134,7 +134,7 @@ class BJJEnv(gym.Env):
         reward = 0
         if self.game.winner == self.game.current_player:
             reward += 300
-        elif self.game.winner == self.game.current_player:
+        elif self.game.winner != self.game.current_player:
             reward -= 300
 
         reward += 1*obs['point_difference']
@@ -253,7 +253,7 @@ class QLearningAgent:
 
         self.state_space = self._initialize_state_space()
         self.action_space = self.env.action_space
-        self.q_table = np.ndarray
+        self.q_table = np.zeros((len(self.state_space), self.action_space.n))
 
     def _initialize_state_space(self) -> List[int]:
         return list(self.board.graph.nodes())
