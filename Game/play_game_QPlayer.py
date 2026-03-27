@@ -276,12 +276,11 @@ class Game:
         print(f"{self.player1.name}: {self.player1.points}")
         print(f"{self.player2.name}: {self.player2.points}")
 
-# Usage
-board = Board(construct_graph())
-state_size = len(board.graph)
-action_size = sum(len(board.get_outgoing_edges(node)) for node in board.graph.nodes())
-q_agent = QLearningAgent(state_size, action_size)
-sim = QLearningSim(num_games=1000, q_agent=q_agent)
-sim.run_games()
-sim.print_results()
+if __name__ == '__main__':
+    board = Board(construct_graph())
+    q_agent = QLearningAgent(board)
+    sim = QLearningSim(num_games=1000, q_agent=q_agent)
+    sim.initialize_games()
+    sim.run_games()
+    sim.agg_results()
 

@@ -117,26 +117,35 @@ class BJJEnv(gym.Env):
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
         move = (start, self.game.board.get_edge_data(start, end))
-        game_over = self.game.play_turn(move)
+        self.game.play_turn(move)
 
-        if game_over:
+        if self.game.winner is None:
             self.game.check_for_points_win()
 
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
-        done = game_over or self.game.turn_count >= self.game.max_turns or self.game.winner is not None
 
-        self.game.turn_count += 1
-        return obs, reward, done, False, {"action_mask": self._get_action_mask()}
+        # terminated: the task ended (submission or reaching a winning position)
+        # truncated: the episode was cut short by the turn limit (not a true terminal state;
+        #            the Q-update should still bootstrap the next-state value)
+        terminated = self.game.winner is not None
+        truncated = (not terminated) and (self.game.turn_count >= self.game.max_turns)
+
+        # Note: turn_count is already incremented inside play_turn(); do not increment again here.
+        return obs, reward, terminated, truncated, {"action_mask": self._get_action_mask()}
 
 
     def _calculate_reward(self, obs) -> float:
         reward = 0
+        other_player = self.game.choose_other_player(self.game.current_player)
         if self.game.winner == self.game.current_player:
             reward += 300
-        elif self.game.winner != self.game.current_player:
+        elif self.game.winner == other_player:
             reward -= 300
 
+        # TODO: currently rewards the cumulative score gap as a heuristic for being ahead of the opponent.
+        # Consider switching to a marginal delta (points earned this turn only) to more precisely credit
+        # the specific action that scored.
         reward += 1*obs['point_difference']
         reward += + 0.5*obs['on_top']
         return reward
@@ -191,7 +200,8 @@ def get_masked_q_values(q_values: np.ndarray, action_mask: np.ndarray) -> np.nda
     assert q_values.shape == action_mask.shape, \
         'Q-values and action masks lengths need to have the same shape for accurate element-wise operations'
     return q_values - (np.inf * (1 - action_mask))
-def q_learning(env: BJJEnv, num_episodes, learning_rate=0.1, discount_factor=0.95, epsilon=0.5):
+def q_learning(env: BJJEnv, num_episodes, learning_rate=0.1, discount_factor=0.95,
+               epsilon=1.0, epsilon_min=0.05, epsilon_decay=0.995):
     """
     initializes Q-table to have dimensions of num_states x num_actions, where each unique
     combination of current node and relative position constitutes a unique state (e.g. node 237
@@ -200,6 +210,11 @@ def q_learning(env: BJJEnv, num_episodes, learning_rate=0.1, discount_factor=0.9
     Note that this is a significantly lower dimensional state space that the observed BJJEnv one, and doesn't encode
     information that could potentially change how the agent acts, such as how many turns are left or the point
     difference between players.
+
+    Args:
+        epsilon: initial exploration rate (default 1.0 — fully exploratory at start)
+        epsilon_min: floor for epsilon after decay (default 0.05)
+        epsilon_decay: multiplicative decay applied after each episode (default 0.995)
     """
 
     # Initialize Q-table
@@ -226,18 +241,27 @@ def q_learning(env: BJJEnv, num_episodes, learning_rate=0.1, discount_factor=0.9
                 masked_q_values = get_masked_q_values(q_table[state_index,:], info['action_mask'])
                 action = np.argmax(masked_q_values)
 
-            next_state_obs, reward, done, _, info = env.step(action)
+            next_state_obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
             next_state_index = state_to_index(next_state_obs)
 
-            # Q-learning update using the masked Q-values for the next state
-            next_masked_q_values = get_masked_q_values(q_table[next_state_index], info['action_mask'])
-            best_next_action = np.argmax(next_masked_q_values)
+            # Q-learning update:
+            # - On termination (tap/win), there is no next state to bootstrap from.
+            # - On truncation (turn limit), the episode was cut short; bootstrap normally.
+            if terminated:
+                td_target = reward
+            else:
+                next_masked_q_values = get_masked_q_values(q_table[next_state_index], info['action_mask'])
+                best_next_action = np.argmax(next_masked_q_values)
+                td_target = reward + discount_factor * q_table[next_state_index][best_next_action]
 
-            td_target = reward + discount_factor * q_table[next_state_index][best_next_action]
             td_error = td_target - q_table[state_index][action]
             q_table[state_index][action] += learning_rate * td_error
 
             state_obs = next_state_obs
+
+        # Decay exploration rate at the end of each episode
+        epsilon = max(epsilon_min, epsilon * epsilon_decay)
 
     return q_table
 
@@ -309,21 +333,21 @@ class QLearningAgent:
         self.exploration_rate = max(self.exploration_min, self.exploration_rate * self.exploration_decay)
 
 
-# Example usage
-env = BJJEnv()
-q_table = q_learning(env, num_episodes=100)
+if __name__ == '__main__':
+    env = BJJEnv()
+    q_table = q_learning(env, num_episodes=100)
 
-# Test the learned policy
-state, info = env.reset()
-done = False
-total_reward = 0
+    # Test the learned policy
+    state, info = env.reset()
+    done = False
+    total_reward = 0
 
-while not done:
-    state_index = state_to_index(state)
-    masked_q_values = get_masked_q_values(q_table[state_index], info['action_mask'])
-    action = np.argmax(masked_q_values)
-    state, reward, done, _, info = env.step(action)
-    total_reward += reward
+    while not done:
+        state_index = state_to_index(state)
+        masked_q_values = get_masked_q_values(q_table[state_index], info['action_mask'])
+        action = np.argmax(masked_q_values)
+        state, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+        total_reward += reward
 
-
-print(f"Total reward: {total_reward}")
+    print(f"Total reward: {total_reward}")
