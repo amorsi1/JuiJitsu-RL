@@ -1,7 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from play_game import Game, Board, GameState, Player, tqdm
+from .play_game import Game, Board, GameState, Player, tqdm
 from typing import List, Tuple, Dict, Optional, Any
 import random
 def bool_to_int(value: bool) -> int:
@@ -101,7 +101,9 @@ class BJJEnv(gym.Env):
         return mask
     def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
-        super().reset(seed=seed)  # Reset the RNG if a seed is provided
+        super().reset(seed=seed)  # Seeds self.np_random
+        if seed is not None:
+            random.seed(seed)  # Also seed Python's random, used by Game internals
 
         # Fully reset the game
         self.game = Game("BJJ Match")  # Create a new game instance
@@ -109,8 +111,10 @@ class BJJEnv(gym.Env):
         self.game.game_state = GameState(self.game.board)  # Reset the game state
         self.game.turn_count = 0
 
-        # Reinitialize the game
         self.game.initialize_game("Player1", "Player2")
+        while not any(self._get_action_mask()):
+            # Reinitialize if there are no valid moves for the starting position
+            self.game.initialize_game("Player1", "Player2")
 
         return self._get_obs(), {"action_mask": self._get_action_mask()}
 
@@ -123,20 +127,22 @@ class BJJEnv(gym.Env):
         (start, end) = self.edge_id_to_nodes[edge_id]
         move = (start, self.game.board.get_edge_data(start, end))
         self.game.play_turn(move)
+        self.game.turn_count += 1
 
-        if self.game.winner is None:
+        # terminated: game ended naturally (submission or position win)
+        terminated = self.game.winner is not None
+        # truncated: turn limit reached; check points to determine a winner if possible
+        truncated = (not terminated) and (self.game.turn_count >= self.game.max_turns)
+
+        if truncated:
             self.game.check_for_points_win()
+            if self.game.winner is not None:
+                terminated = True
+                truncated = False
 
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
 
-        # terminated: the task ended (submission or reaching a winning position)
-        # truncated: the episode was cut short by the turn limit (not a true terminal state;
-        #            the Q-update should still bootstrap the next-state value)
-        terminated = self.game.winner is not None
-        truncated = (not terminated) and (self.game.turn_count >= self.game.max_turns)
-
-        # Note: turn_count is already incremented inside play_turn(); do not increment again here.
         return obs, reward, terminated, truncated, {"action_mask": self._get_action_mask()}
 
 
@@ -201,7 +207,7 @@ def get_masked_q_values(q_values: np.ndarray, action_mask: np.ndarray) -> np.nda
     """
     assert q_values.shape == action_mask.shape, \
         'Q-values and action masks lengths need to have the same shape for accurate element-wise operations'
-    return q_values - (np.inf * (1 - action_mask))
+    return np.where(action_mask, q_values, -np.inf)
 def q_learning(env: BJJEnv, num_episodes, learning_rate=0.1, discount_factor=0.95,
                epsilon=1.0, epsilon_min=0.05, epsilon_decay=0.995):
     """

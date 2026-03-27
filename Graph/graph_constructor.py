@@ -2,7 +2,7 @@ import json
 import os
 import networkx as nx
 from dotenv import load_dotenv
-from Graph.reward import add_rewards_to_graph
+from .reward import add_rewards_to_graph
 from typing import List, Tuple, Dict
 import copy
 
