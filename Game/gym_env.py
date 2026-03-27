@@ -19,8 +19,7 @@ class BJJEnv(gym.Env):
         self.edge_id_to_nodes = {data['id']: (start, end) for start, end, data in self.G.edges(data=True)}
 
         # get node IDs
-        self.num_nodes = max(self.G.nodes())
-
+        self.num_nodes = max(self.G.nodes()) + 1  # nodes are 0-indexed; +1 gives count and ensures Discrete covers all IDs
         # Define action space
         self.action_space = spaces.Discrete(len(self.edge_ids))
             # 'from_node': spaces.Discrete(num_nodes),
@@ -42,13 +41,18 @@ class BJJEnv(gym.Env):
         })
 
         # Define observation space
-        self.observation_space = spaces.Dict({
-            'current_position': spaces.Discrete(self.num_nodes),
-            'point_difference': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.int32),
-            'on_top': spaces.Discrete(2),
-            'on_bottom': spaces.Discrete(2),
-            'turns_left': spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=np.int32)
-        })
+        # Note: SB3 will want a flat obervation space. In the future this may be consolidated into something like:
+
+        self.observation_space = spaces.Box(                                                                                                
+        low=np.array([0, -1e4, 0, 0, 0], dtype=np.float32),                                                                             
+        high=np.array([self.num_nodes, # Position (Node ID)
+                        1e4, # Point difference (can be negative if behind)
+                        1, # on top (binary)
+                        1, # on bottom (binary)
+                        self.game.max_turns # number of turns left (can be 0 at end of game)
+                    ], dtype=np.float32) 
+        )
+
 
     def _get_state(self):
         # Return the full state (not directly used by the agent)
@@ -61,17 +65,18 @@ class BJJEnv(gym.Env):
             "turn_num": self.game.turn_count,
         }
 
-    def _get_obs(self) -> Dict[str, Any]:
+    def _get_obs(self) -> np.ndarray:
+        # Observation order: [current_position, point_difference, on_top, on_bottom, turns_left]
         current_player = self.game.current_player
         other_player = self.game.choose_other_player(current_player)
 
-        return {
-            'current_position': self.game.game_state.current_node,
-            'point_difference': current_player.points - other_player.points,
-            'on_top': bool_to_int(current_player.is_top),
-            'on_bottom': bool_to_int(current_player.is_bottom),
-            'turns_left': self.game.max_turns - self.game.turn_count
-        }
+        return np.array([
+            self.game.game_state.current_node,
+            current_player.points - other_player.points,
+            bool_to_int(current_player.is_top),
+            bool_to_int(current_player.is_bottom),
+            self.game.max_turns - self.game.turn_count
+        ], dtype=np.float32)
 
 
     def _get_action_mask(self) -> np.ndarray:
@@ -146,8 +151,8 @@ class BJJEnv(gym.Env):
         # TODO: currently rewards the cumulative score gap as a heuristic for being ahead of the opponent.
         # Consider switching to a marginal delta (points earned this turn only) to more precisely credit
         # the specific action that scored.
-        reward += 1*obs['point_difference']
-        reward += + 0.5*obs['on_top']
+        reward += 1*obs[1]   # point_difference
+        reward += 0.5*obs[2]  # on_top
         return reward
     def render(self, mode='human'):
         print(
@@ -169,18 +174,15 @@ def state_to_index(state=None, position=None, is_top=None) -> int:
     Optional parameter lets you explicitly pass in an observation to identify the index, but will return the
     current state's observation by default
     """
-    if state:
-        assert isinstance(state, Dict) and 'current_position' in state and 'on_top' in state, \
-            "not enough information in 'state' input. Update 'state' or don't pass any input"
-        position = state['current_position']
-        is_top = state['on_top']
-        return position * 2 + is_top
-    elif position and is_top:
-        assert isinstance(position,int) and is_top in (0,1)
+    if state is not None and isinstance(state, np.ndarray):
+        # Flat obs array: [current_position, point_difference, on_top, on_bottom, turns_left]
+        return int(state[0]) * 2 + int(state[2])
+    elif state is not None and isinstance(state, dict):
+        return state['current_position'] * 2 + state['on_top']
+    elif position is not None and is_top is not None:
         return position * 2 + is_top
     else:
-        # TODO: Place under a class to access _get_obs -> remove valueError
-        ValueError('no values passed in')
+        raise ValueError('no values passed in')
 
 
 def get_masked_q_values(q_values: np.ndarray, action_mask: np.ndarray) -> np.ndarray:
