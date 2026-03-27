@@ -189,9 +189,9 @@ class Game:
         """
         gives each player the other players' top and bottom position attributes
         """
-        cache = (self.player1.is_top, self.player1.is_top)
-        self.player1.is_top, self.player1.is_top = self.player2.is_top, self.player2.is_top
-        self.player2.is_top, self.player2.is_top = cache
+        cache = (self.player1.is_top, self.player1.is_bottom)
+        self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
+        self.player2.is_top, self.player2.is_bottom = cache
 
     def play_turn(self) -> bool:
         current_player = self.player1 if self.current_player is self.player1 else self.player2
