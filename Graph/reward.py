@@ -12,9 +12,13 @@ def load_json(fpath):
         return json.load(file)
 
 
-def add_terminal_win_states(G, json_path=None):
-    if json_path is None:
-        json_path = os.path.join(GRAPH_FILES_DIR, 'terminal_node_winstate.json')
+def add_terminal_win_states(G, base_path=None):
+    if base_path is None:
+        base_path = GRAPH_FILES_DIR
+
+    print(base_path)
+    
+    json_path = os.path.join(base_path, 'terminal_node_winstate.json')
     """add annotations of which nodes are considered a win """
     with open(json_path, 'r') as file:
         terminal_win_nodes = json.load(file)
@@ -94,10 +98,13 @@ def find_and_tag_all_moves(G):
     # to do
     return G
 
-def add_rewards_to_graph(G):
+def add_rewards_to_graph(G, base_path = None):
+    if base_path is None:
+        base_path = GRAPH_FILES_DIR
+
     ## Identifying terminal game states
     # Flagging positions where one player has won. This identified checkmates positions to terminate the game at
-    G = add_terminal_win_states(G)
+    G = add_terminal_win_states(G, base_path = base_path)
     # Identifying moves where one player submits and flagging it
     G = add_tap_flag(G)
 

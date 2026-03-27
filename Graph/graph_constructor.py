@@ -108,12 +108,17 @@ def load_json(fpath):
     with open(fpath, 'r') as file:
         return json.load(file)
 
-def construct_graph(nodes_path=None,
-                    transitions_path=None) -> nx.classes.digraph.DiGraph:
+def construct_graph(nodes_path = None,
+                    transitions_path = None,
+                    base_path = None) -> nx.classes.digraph.DiGraph:
+    
+    if base_path is None:
+        base_path = GRAPH_FILES_DIR
+
     if nodes_path is None:
-        nodes_path = os.path.join(GRAPH_FILES_DIR, 'nodes.json')
+        nodes_path = os.path.join(base_path, 'nodes.json')
     if transitions_path is None:
-        transitions_path = os.path.join(GRAPH_FILES_DIR, 'transitions.json')
+        transitions_path = os.path.join(base_path, 'transitions.json')
 
     nodes = load_json(nodes_path)
     transitions = load_json(transitions_path)
@@ -124,8 +129,9 @@ def construct_graph(nodes_path=None,
     G = refactor_incoming_and_outgoing(G)
 
     # add rewards signal to GrappleMap data
-    G = add_rewards_to_graph(G)
+    G = add_rewards_to_graph(G, base_path=base_path)
 
     return G
 
-G = construct_graph()
+if __name__ == "__main__":
+    G = construct_graph()
