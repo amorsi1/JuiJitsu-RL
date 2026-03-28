@@ -8,19 +8,17 @@ All AI-generated notes, plans, reports, and scratch `.md` files must go in `.cla
 
 ## Commands
 
-This project uses **uv** as the package manager (Python 3.12).
+This project uses **uv** as the package manager (Python 3.12). The project is configured with a hatchling build backend and installs in editable mode via `uv sync`, making `Game`, `Graph`, and `render` importable directly (no `src.` prefix needed).
 
 ```bash
-uv sync              # Install dependencies
-uv sync --extra dev        # Include dev dependencies (pytest)
+uv sync --extra dev        # Install project + dev dependencies (pytest)
 ```
 
 Run tests:
-make sure `uv synv --extra dev` was run beforehand
 
 ```bash
 uv run pytest tests/                         # Core game/graph tests
-uv run pytest render/tests/                  # Visualization tests
+uv run pytest src/render/tests/              # Visualization tests
 uv run pytest tests/test_position.py::test_swap_players_positions  # Single test
 ```
 
@@ -29,6 +27,18 @@ Environment variables are loaded via `python-dotenv`. Copy `.env.template` to `.
 ## Architecture
 
 The project has three layers: **graph**, **game engine**, and **RL environment**.
+
+## Import Convention
+
+All imports use bare package names — never `src.` prefix, never `sys.path` manipulation:
+
+```python
+from Game.play_game import Board, GameState, Player
+from Graph.graph_constructor import construct_graph
+from render.visualizer3d import Visualizer3D
+```
+
+This works because `uv sync` installs the project in editable mode, registering `src/Game`, `src/Graph`, and `src/render` as top-level packages.
 
 ### 1. Graph Layer (`Graph/`)
 

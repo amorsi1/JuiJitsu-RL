@@ -4,15 +4,9 @@ Run a dummy BJJ game and visualize it in 3D with the render feature.
 This will open your browser showing the 3D positions and transitions.
 """
 
-import sys
 import time
-from pathlib import Path
 
-# Add Game directory to path for imports
-game_dir = Path(__file__).parent / "Game"
-sys.path.insert(0, str(game_dir))
-
-from play_game import Board, GameState, Player
+from Game.play_game import Board, GameState, Player
 from Graph.graph_constructor import construct_graph
 from render.visualizer3d import Visualizer3D
 

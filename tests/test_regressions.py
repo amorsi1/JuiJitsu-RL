@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from src.Game.play_game import Game, Player
-from src.Graph.graph_constructor import load_json
+from Game.play_game import Game, Player
+from Graph.graph_constructor import load_json
 
 
 def test_swap_players_positions_exchanges_top_bottom_flags():

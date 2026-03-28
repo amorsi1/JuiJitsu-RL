@@ -4,14 +4,7 @@ Simple script to run and visualize a single dummy BJJ game.
 Run this from the project root: python visualize_game.py
 """
 
-import sys
-from pathlib import Path
-
-# Add Game directory to path for imports
-game_dir = Path(__file__).parent / "Game"
-sys.path.insert(0, str(game_dir))
-
-from play_game_visualizer import Game
+from Game.play_game_visualizer import Game
 
 def main():
     # Create a game

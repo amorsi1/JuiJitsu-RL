@@ -1,4 +1,4 @@
-from play_game import Board, GameState, Player
+from Game.play_game import Board, GameState, Player
 import random
 import networkx as nx
 import numpy as np
