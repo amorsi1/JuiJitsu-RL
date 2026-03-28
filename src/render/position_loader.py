@@ -5,9 +5,13 @@ into lookup dicts, separate from the NetworkX graph.
 import json
 import os
 from typing import Dict, List
+from dotenv import load_dotenv
 
 # Path to the GrappleMap data files
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'Graph', 'files')
+load_dotenv(".env.template") # default .env template, safe to commit to repo
+load_dotenv(".env", override=True) # override if a private .env file is provided
+
+DATA_DIR = os.environ.get('GRAPH_FILES_DIR', 'GrappleMap_files/')
 
 
 def _parse_joint(j: dict) -> List[float]:

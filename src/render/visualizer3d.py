@@ -7,7 +7,7 @@ import time
 import webbrowser
 from typing import Optional
 
-from render.position_server import PositionServer
+from .position_server import PositionServer
 
 
 class Visualizer3D:

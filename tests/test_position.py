@@ -1,7 +1,7 @@
 import networkx as nx
 import pytest
 
-from Graph.graph_constructor import construct_graph
+from src.Graph.graph_constructor import construct_graph
 
 
 @pytest.fixture(scope="module")

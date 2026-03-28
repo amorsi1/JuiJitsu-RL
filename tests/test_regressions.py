@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from Game.play_game import Game, Player
-from Graph.graph_constructor import load_json
+from src.Game.play_game import Game, Player
+from src.Graph.graph_constructor import load_json
 
 
 def test_swap_players_positions_exchanges_top_bottom_flags():
@@ -23,7 +23,7 @@ def test_swap_players_positions_exchanges_top_bottom_flags():
 
 
 def test_load_json_nodes_file_successfully():
-    nodes_path = Path(__file__).resolve().parents[1] / "Graph" / "files" / "nodes.json"
+    nodes_path = Path(__file__).resolve().parents[1] / "GrappleMap_files" / "nodes.json"
 
     nodes = load_json(nodes_path)
 

@@ -1,0 +1,58 @@
+[
+ {
+   "node": 16,
+   "winner": "top"
+ },
+ {
+   "node": 87,
+   "winner": "top"
+ },
+ {
+   "node": 106,
+   "winner": "bottom"
+ },
+ {
+   "node": 241,
+   "winner": "top"
+ },
+ {
+   "node": 261,
+   "winner": "top"
+ },
+ {
+   "node": 262,
+   "winner": "top"
+ },
+ {
+   "node": 279,
+   "winner": "bottom"
+ },
+ {
+   "node": 311,
+   "winner": "top"
+ },
+ {
+   "node": 320,
+   "winner": "top"
+ },
+ {
+   "node": 345,
+   "winner": "bottom"
+ },
+ {
+   "node": 349,
+   "winner": "bottom"
+ },
+ {
+   "node": 499,
+   "winner": "top"
+ },
+ {
+   "node": 502,
+   "winner": "top"
+ },
+ {
+   "node": 510,
+   "winner": "bottom"
+ }
+]

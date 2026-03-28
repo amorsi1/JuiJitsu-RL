@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv(".env.template") # default .env template, safe to commit to repo
 load_dotenv(".env", override=True) # override if a private .env file is provided
-GRAPH_FILES_DIR = os.environ.get('GRAPH_FILES_DIR', 'Graph/files')
+GRAPH_FILES_DIR = os.environ.get('GRAPH_FILES_DIR', 'GrappleMap_files/')
 
 
 def load_json(fpath):

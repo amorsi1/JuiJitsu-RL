@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from gymnasium.utils.env_checker import check_env
 
-from Game.gym_env import BJJEnv, get_masked_q_values, state_to_index
+from src.Game.gym_env import BJJEnv, get_masked_q_values, state_to_index
 
 
 @pytest.fixture(scope="module")
