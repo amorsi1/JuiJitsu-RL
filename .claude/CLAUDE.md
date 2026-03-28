@@ -18,6 +18,7 @@ Run tests:
 
 ```bash
 uv run pytest tests/                         # Core game/graph tests
+uv run pytest src/Game/tests/               # Gym env + registration tests
 uv run pytest src/render/tests/              # Visualization tests
 uv run pytest tests/test_position.py::test_swap_players_positions  # Single test
 ```
@@ -62,6 +63,9 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 ### 3. RL Environment (`Game/gym_env.py`)
 
 `BJJEnv` wraps the game engine as a Gymnasium environment:
+- **Registered as**: `"BJJEnv-v0"` — use `gymnasium.make("BJJEnv-v0")` as the standard entry point. Registration fires on `import Game` via `Game/__init__.py`. An idempotency guard prevents errors on module reload.
+- **`disable_env_checker=True`** in the registry — no `PassiveEnvChecker` wrapper overhead during training. Use `gymnasium.make("BJJEnv-v0", disable_env_checker=False)` for development/debugging.
+- **`max_episode_steps=None`** — no `TimeLimit` wrapper; `BJJEnv` manages truncation internally via `game.max_turns`.
 - **Action space**: `Discrete(n)` where n = total edges in graph (~700+); illegal actions are masked via `info['action_mask']`
 - **Observation space**: flat `Box(shape=(5,), dtype=float32)` — `[current_position, point_difference, on_top, on_bottom, turns_left]` — SB3-compatible
 - **State index for Q-table**: `position * 2 + is_top` (encoded by `state_to_index()`)
@@ -70,7 +74,7 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 `q_learning()` is the active standalone training function. It uses epsilon-greedy exploration with configurable decay (`epsilon`, `epsilon_min`, `epsilon_decay` params). `QLearningAgent` is an incomplete class-based wrapper — `_initialize_state_space` still references `self.board` (should be `self.env.G`) and is not used for training.
 
-`check_env(BJJEnv())` passes cleanly as of 2026-03-27.
+`check_env(BJJEnv())` passes cleanly as of 2026-03-28.
 
 ### 4. Visualization (`render/`)
 
