@@ -101,7 +101,7 @@ def test_render_ansi_returns_string(env_ansi: BJJEnv) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_render_rgb_array_returns_numpy(mock_renderer_cls: MagicMock) -> None:
     """render() with mode='rgb_array' must return a uint8 numpy array of shape (H, W, 3)."""
     width, height = 600, 400
@@ -132,7 +132,7 @@ def test_renderer_lazy_init(env_rgb: BJJEnv) -> None:
     """After construction with render_mode='rgb_array', _renderer must be None until render() is called."""
     assert env_rgb._renderer is None
 
-    with patch("Game.gym_env.FrameRenderer") as mock_cls:
+    with patch("render.frame_renderer.FrameRenderer") as mock_cls:
         mock_instance = MagicMock()
         mock_instance.render_frame.return_value = np.zeros((400, 600, 3), dtype=np.uint8)
         mock_cls.return_value = mock_instance
@@ -149,7 +149,7 @@ def test_renderer_lazy_init(env_rgb: BJJEnv) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_renderer_not_created_when_mode_none(mock_renderer_cls: MagicMock) -> None:
     """With render_mode=None, calling render() must never instantiate a renderer."""
     env = BJJEnv()
@@ -167,7 +167,7 @@ def test_renderer_not_created_when_mode_none(mock_renderer_cls: MagicMock) -> No
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_close_cleans_up_renderer(mock_renderer_cls: MagicMock) -> None:
     """After rendering, close() must call renderer.close() and set _renderer to None."""
     mock_instance = MagicMock()
@@ -189,7 +189,7 @@ def test_close_cleans_up_renderer(mock_renderer_cls: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_close_idempotent(mock_renderer_cls: MagicMock) -> None:
     """Calling close() twice must not raise."""
     mock_instance = MagicMock()
@@ -209,7 +209,7 @@ def test_close_idempotent(mock_renderer_cls: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_step_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
     """In human mode, step() must call render() automatically."""
     mock_instance = MagicMock()
@@ -238,7 +238,7 @@ def test_step_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("Game.gym_env.FrameRenderer")
+@patch("render.frame_renderer.FrameRenderer")
 def test_reset_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
     """In human mode, reset() must call render() automatically."""
     mock_instance = MagicMock()

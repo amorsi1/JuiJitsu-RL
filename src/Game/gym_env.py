@@ -175,8 +175,8 @@ class BJJEnv(gym.Env):
     def _ensure_renderer(self) -> None:
         """Lazily create the FrameRenderer on first graphical render call."""
         if self._renderer is None:
-            from render.frame_renderer import FrameRenderer
-            self._renderer = FrameRenderer()
+            import render.frame_renderer
+            self._renderer = render.frame_renderer.FrameRenderer()
 
     def _get_player_info(self) -> dict[str, object]:
         """Build display-info dict for the renderer overlay text."""
