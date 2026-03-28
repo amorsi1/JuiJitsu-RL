@@ -99,6 +99,11 @@ class BJJEnv(gym.Env):
             edge_id = move[1]['id']
             mask[self.id_to_index[edge_id]] = 1
         return mask
+
+    def action_masks(self) -> np.ndarray:
+        """Public interface for sb3-contrib MaskablePPO action masking."""
+        return self._get_action_mask()
+
     def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
         super().reset(seed=seed)  # Seeds self.np_random

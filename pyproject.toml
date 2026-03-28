@@ -20,6 +20,9 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+training = [
+    "sb3-contrib>=2.3",
+]
 
 [build-system]
 requires = ["hatchling"]
