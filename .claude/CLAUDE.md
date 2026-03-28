@@ -11,14 +11,15 @@ All AI-generated notes, plans, reports, and scratch `.md` files must go in `.cla
 This project uses **uv** as the package manager (Python 3.12). The project is configured with a hatchling build backend and installs in editable mode via `uv sync`, making `Game`, `Graph`, and `render` importable directly (no `src.` prefix needed).
 
 ```bash
-uv sync --extra dev        # Install project + dev dependencies (pytest)
+uv sync --extra dev                  # Install project + dev dependencies (pytest)
+uv sync --extra training --extra dev # Also install SB3 training dependencies (sb3-contrib, torch)
 ```
 
 Run tests:
 
 ```bash
 uv run pytest tests/                         # Core game/graph tests
-uv run pytest src/Game/tests/               # Gym env + registration tests
+uv run pytest src/Game/tests/               # Gym env + registration + SB3 tests
 uv run pytest src/render/tests/              # Visualization tests
 uv run pytest tests/test_position.py::test_swap_players_positions  # Single test
 ```
@@ -74,7 +75,13 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 `q_learning()` is the active standalone training function. It uses epsilon-greedy exploration with configurable decay (`epsilon`, `epsilon_min`, `epsilon_decay` params). `QLearningAgent` is an incomplete class-based wrapper — `_initialize_state_space` still references `self.board` (should be `self.env.G`) and is not used for training.
 
+`action_masks()` is the public interface for sb3-contrib's MaskablePPO (delegates to `_get_action_mask()`).
+
 `check_env(BJJEnv())` passes cleanly as of 2026-03-28.
+
+### 3b. SB3 Training (`Game/train_sb3.py`)
+
+`train()` trains a MaskablePPO agent (sb3-contrib) on BJJEnv with action masking. Run via `uv run python -m Game.train_sb3`. Models save to `models/maskable_ppo_bjj` by default. `load_and_evaluate()` reloads and evaluates a saved model. Requires the `training` optional dependency group (`uv sync --extra training`).
 
 ### 4. Visualization (`render/`)
 
