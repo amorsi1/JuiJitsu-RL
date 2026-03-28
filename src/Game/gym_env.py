@@ -7,7 +7,12 @@ import random
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
 class BJJEnv(gym.Env):
-    def __init__(self):
+    metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 2}
+
+    def __init__(self, render_mode: str | None = None) -> None:
+        self.render_mode = render_mode
+        self._renderer: object | None = None  # lazy FrameRenderer
+
         self.game = Game("BJJ Match")
         self.game.initialize_game("Player1", "Player2")
         self.G = self.game.board.graph
@@ -116,6 +121,9 @@ class BJJEnv(gym.Env):
             # Reinitialize if there are no valid moves for the starting position
             self.game.initialize_game("Player1", "Player2")
 
+        if self.render_mode == "human":
+            self.render()
+
         return self._get_obs(), {"action_mask": self._get_action_mask()}
 
     def step(self, action: int) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
@@ -143,8 +151,12 @@ class BJJEnv(gym.Env):
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
 
-        return obs, reward, terminated, truncated, {"action_mask": self._get_action_mask()}
+        info = {"action_mask": self._get_action_mask()}
 
+        if self.render_mode == "human":
+            self.render()
+
+        return obs, reward, terminated, truncated, info
 
     def _calculate_reward(self, obs) -> float:
         reward = 0
@@ -160,12 +172,57 @@ class BJJEnv(gym.Env):
         reward += 1*obs[1]   # point_difference
         reward += 0.5*obs[2]  # on_top
         return reward
-    def render(self, mode='human'):
-        print(
-            f"Current position: {self.game.game_state.board.get_node_data(self.game.game_state.current_node)['description']}")
-        print(f"Player1 points: {self.game.player1.points}, Player2 points: {self.game.player2.points}")
-        print(f"Player1 is on {'top' if self.game.player1.is_top else 'bottom'}")
-        print(f"Turn count: {self.game.turn_count}")
+    def _ensure_renderer(self) -> None:
+        """Lazily create the FrameRenderer on first graphical render call."""
+        if self._renderer is None:
+            from render.frame_renderer import FrameRenderer
+            self._renderer = FrameRenderer()
+
+    def _get_player_info(self) -> dict[str, object]:
+        """Build display-info dict for the renderer overlay text."""
+        node = self.game.game_state.current_node
+        node_data = self.game.game_state.board.get_node_data(node)
+        return {
+            "description": node_data.get("description", str(node)),
+            "p1_points": self.game.player1.points,
+            "p2_points": self.game.player2.points,
+            "turn": self.game.turn_count,
+        }
+
+    def render(self) -> np.ndarray | str | None:
+        """Render the environment according to render_mode."""
+        if self.render_mode is None:
+            return None
+        if self.render_mode == "ansi":
+            return self._render_ansi()
+        # "human" or "rgb_array"
+        self._ensure_renderer()
+        return self._renderer.render_frame(  # type: ignore[union-attr]
+            node_id=self.game.game_state.current_node,
+            render_mode=self.render_mode,
+            fps=self.metadata["render_fps"],
+            player_info=self._get_player_info(),
+        )
+
+    def _render_ansi(self) -> str:
+        """Return a text representation of the current game state."""
+        node = self.game.game_state.current_node
+        node_data = self.game.game_state.board.get_node_data(node)
+        desc = node_data.get("description", str(node))
+        p1_pos = "top" if self.game.player1.is_top else "bottom"
+        return (
+            f"Position: {desc}\n"
+            f"P1: {self.game.player1.points} pts ({p1_pos})  "
+            f"P2: {self.game.player2.points} pts\n"
+            f"Turn: {self.game.turn_count}"
+        )
+
+    def close(self) -> None:
+        """Clean up rendering resources."""
+        if self._renderer is not None:
+            self._renderer.close()  # type: ignore[union-attr]
+            self._renderer = None
+        super().close()
 
 
 def state_to_index(state=None, position=None, is_top=None) -> int:
