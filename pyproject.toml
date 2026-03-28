@@ -22,6 +22,7 @@ dev = [
 ]
 training = [
     "sb3-contrib>=2.3",
+    "torch<2.3",  # later versions lack macOS x86_64 wheels
 ]
 
 [build-system]
