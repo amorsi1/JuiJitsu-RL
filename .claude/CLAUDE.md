@@ -79,7 +79,7 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 ### 4. Visualization (`render/`)
 
-**Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D stick figures using pygame with orthographic XY projection. It uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and the 27-segment connectivity ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
+**Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D figures using pygame with orthographic XY projection. Features: z-depth shading (closer parts brighter, 0.4–1.0 brightness range), anatomical segment widths from JS viewer proportions (`SEGMENT_DEFS` with `radius_center`), proportional joint radii (`JOINT_RADII`), and painter's algorithm draw order (back-to-front across both players for correct occlusion). Uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and 28-segment connectivity with `SegmentDef` NamedTuples ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
 
 **Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py` and `visualize_game_3d.py` at the repo root. Independent of `render_mode`.
 
