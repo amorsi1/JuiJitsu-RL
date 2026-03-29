@@ -1,11 +1,14 @@
 """Pygame-based 2D stick figure renderer for BJJ positions.
 
-Renders an orthographic front-view (XY plane) of both players as stick figures
-using joint coordinates from nodes.json. Supports both 'human' (window) and
-'rgb_array' (numpy array) Gymnasium render modes.
+Renders an orthographic front-view (XY plane) of both players using joint
+coordinates from nodes.json. Features z-depth shading, anatomical segment
+widths, and painter's algorithm draw order. Supports both 'human' (window)
+and 'rgb_array' (numpy array) Gymnasium render modes.
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 import numpy as np
 
@@ -41,41 +44,67 @@ HEAD = 22
 NUM_JOINTS = 23
 
 # ---------------------------------------------------------------------------
-# Segment connectivity — ported from viewer/index.html
-# Each tuple is (from_joint, to_joint).
+# Segment connectivity with anatomical radii — ported from viewer/index.html
+# radius_center controls the pixel width of each segment.
 # ---------------------------------------------------------------------------
 
-SEGMENTS: list[tuple[int, int]] = [
+
+class SegmentDef(NamedTuple):
+    joint_from: int
+    joint_to: int
+    radius_center: float
+
+
+SEGMENT_DEFS: list[SegmentDef] = [
     # Left side
-    (LEFT_TOE, LEFT_HEEL),
-    (LEFT_TOE, LEFT_ANKLE),
-    (LEFT_HEEL, LEFT_ANKLE),
-    (LEFT_ANKLE, LEFT_KNEE),
-    (LEFT_KNEE, LEFT_HIP),
-    (LEFT_HIP, CORE),
-    (CORE, LEFT_SHOULDER),
-    (LEFT_SHOULDER, LEFT_ELBOW),
-    (LEFT_ELBOW, LEFT_WRIST),
-    (LEFT_WRIST, LEFT_HAND),
-    (LEFT_HAND, LEFT_FINGERS),
+    SegmentDef(LEFT_TOE, LEFT_HEEL, 0.025),
+    SegmentDef(LEFT_TOE, LEFT_ANKLE, 0.025),
+    SegmentDef(LEFT_HEEL, LEFT_ANKLE, 0.025),
+    SegmentDef(LEFT_ANKLE, LEFT_KNEE, 0.055),
+    SegmentDef(LEFT_KNEE, LEFT_HIP, 0.085),
+    SegmentDef(LEFT_HIP, CORE, 0.1),
+    SegmentDef(CORE, LEFT_SHOULDER, 0.075),
+    SegmentDef(LEFT_SHOULDER, LEFT_ELBOW, 0.06),
+    SegmentDef(LEFT_ELBOW, LEFT_WRIST, 0.03),
+    SegmentDef(LEFT_WRIST, LEFT_HAND, 0.02),
+    SegmentDef(LEFT_HAND, LEFT_FINGERS, 0.02),
+    SegmentDef(LEFT_WRIST, LEFT_FINGERS, 0.02),
     # Right side
-    (RIGHT_TOE, RIGHT_HEEL),
-    (RIGHT_TOE, RIGHT_ANKLE),
-    (RIGHT_HEEL, RIGHT_ANKLE),
-    (RIGHT_ANKLE, RIGHT_KNEE),
-    (RIGHT_KNEE, RIGHT_HIP),
-    (RIGHT_HIP, CORE),
-    (CORE, RIGHT_SHOULDER),
-    (RIGHT_SHOULDER, RIGHT_ELBOW),
-    (RIGHT_ELBOW, RIGHT_WRIST),
-    (RIGHT_WRIST, RIGHT_HAND),
-    (RIGHT_HAND, RIGHT_FINGERS),
+    SegmentDef(RIGHT_TOE, RIGHT_HEEL, 0.025),
+    SegmentDef(RIGHT_TOE, RIGHT_ANKLE, 0.025),
+    SegmentDef(RIGHT_HEEL, RIGHT_ANKLE, 0.025),
+    SegmentDef(RIGHT_ANKLE, RIGHT_KNEE, 0.055),
+    SegmentDef(RIGHT_KNEE, RIGHT_HIP, 0.085),
+    SegmentDef(RIGHT_HIP, CORE, 0.1),
+    SegmentDef(CORE, RIGHT_SHOULDER, 0.075),
+    SegmentDef(RIGHT_SHOULDER, RIGHT_ELBOW, 0.06),
+    SegmentDef(RIGHT_ELBOW, RIGHT_WRIST, 0.03),
+    SegmentDef(RIGHT_WRIST, RIGHT_HAND, 0.02),
+    SegmentDef(RIGHT_HAND, RIGHT_FINGERS, 0.02),
+    SegmentDef(RIGHT_WRIST, RIGHT_FINGERS, 0.02),
     # Cross connections
-    (LEFT_HIP, RIGHT_HIP),
-    (LEFT_SHOULDER, NECK),
-    (RIGHT_SHOULDER, NECK),
-    (NECK, HEAD),
+    SegmentDef(LEFT_HIP, RIGHT_HIP, 0.1),
+    SegmentDef(LEFT_SHOULDER, NECK, 0.065),
+    SegmentDef(RIGHT_SHOULDER, NECK, 0.065),
+    SegmentDef(NECK, HEAD, 0.05),
 ]
+
+# Per-joint radii — from viewer/index.html lines 120-127
+JOINT_RADII: dict[int, float] = {
+    LEFT_TOE: 0.025, RIGHT_TOE: 0.025,
+    LEFT_HEEL: 0.03, RIGHT_HEEL: 0.03,
+    LEFT_ANKLE: 0.03, RIGHT_ANKLE: 0.03,
+    LEFT_KNEE: 0.05, RIGHT_KNEE: 0.05,
+    LEFT_HIP: 0.09, RIGHT_HIP: 0.09,
+    LEFT_SHOULDER: 0.08, RIGHT_SHOULDER: 0.08,
+    LEFT_ELBOW: 0.045, RIGHT_ELBOW: 0.045,
+    LEFT_WRIST: 0.02, RIGHT_WRIST: 0.02,
+    LEFT_HAND: 0.02, RIGHT_HAND: 0.02,
+    LEFT_FINGERS: 0.02, RIGHT_FINGERS: 0.02,
+    CORE: 0.1,
+    NECK: 0.05,
+    HEAD: 0.11,
+}
 
 # Joints to render as circles (matching the JS viewer's render_as_sphere flag)
 SPHERE_JOINTS: list[int] = [
@@ -96,6 +125,43 @@ PLAYER_COLORS: list[tuple[int, int, int]] = [
 
 BG_COLOR: tuple[int, int, int] = (25, 25, 45)
 TEXT_COLOR: tuple[int, int, int] = (200, 200, 200)
+
+# ---------------------------------------------------------------------------
+# Z-depth shading
+# ---------------------------------------------------------------------------
+
+DEPTH_MIN_BRIGHTNESS: float = 0.4
+DEPTH_MAX_BRIGHTNESS: float = 1.0
+
+
+def _depth_shaded_color(
+    base_color: tuple[int, int, int],
+    z: float,
+    z_min: float,
+    z_range: float,
+) -> tuple[int, int, int]:
+    """Scale RGB brightness based on z-depth. Closer (lower z) = brighter."""
+    if z_range <= 0:
+        t = 0.0
+    else:
+        t = max(0.0, min(1.0, (z - z_min) / z_range))
+    brightness = DEPTH_MAX_BRIGHTNESS - t * (DEPTH_MAX_BRIGHTNESS - DEPTH_MIN_BRIGHTNESS)
+    return (
+        min(255, int(base_color[0] * brightness)),
+        min(255, int(base_color[1] * brightness)),
+        min(255, int(base_color[2] * brightness)),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Projection result
+# ---------------------------------------------------------------------------
+
+
+class ProjectionResult(NamedTuple):
+    screen_coords: list[list[tuple[int, int]]]
+    z_values: list[list[float]]
+    scale: float
 
 
 class FrameRenderer:
@@ -127,13 +193,12 @@ class FrameRenderer:
 
     def _project_joints(
         self, players: list[list[list[float]]]
-    ) -> list[list[tuple[int, int]]]:
+    ) -> ProjectionResult:
         """Project 3D joint positions to 2D screen coordinates.
 
         Uses orthographic XY projection (front view, looking along Z axis).
-        Returns pixel coordinates for each player's joints.
+        Returns screen coordinates, z-values, and the projection scale factor.
         """
-        # Collect all x, y values across both players for normalization
         all_x: list[float] = []
         all_y: list[float] = []
         for player_joints in players:
@@ -144,7 +209,6 @@ class FrameRenderer:
         min_x, max_x = min(all_x), max(all_x)
         min_y, max_y = min(all_y), max(all_y)
 
-        # Add padding
         margin = 40
         range_x = max_x - min_x or 1.0
         range_y = max_y - min_y or 1.0
@@ -152,23 +216,25 @@ class FrameRenderer:
         draw_w = self._width - 2 * margin
         draw_h = self._height - 2 * margin - 30  # reserve top for text
 
-        # Uniform scale to preserve aspect ratio
         scale = min(draw_w / range_x, draw_h / range_y)
 
-        # Center offset
         cx = margin + (draw_w - range_x * scale) / 2
         cy = margin + 30 + (draw_h - range_y * scale) / 2
 
-        projected: list[list[tuple[int, int]]] = []
+        screen_coords: list[list[tuple[int, int]]] = []
+        z_values: list[list[float]] = []
         for player_joints in players:
             pts: list[tuple[int, int]] = []
+            zs: list[float] = []
             for joint in player_joints:
                 px = int(cx + (joint[0] - min_x) * scale)
-                # Flip Y so up is up on screen
                 py = int(cy + (max_y - joint[1]) * scale)
                 pts.append((px, py))
-            projected.append(pts)
-        return projected
+                zs.append(joint[2])
+            screen_coords.append(pts)
+            z_values.append(zs)
+
+        return ProjectionResult(screen_coords=screen_coords, z_values=z_values, scale=scale)
 
     def _draw_frame(
         self,
@@ -176,30 +242,68 @@ class FrameRenderer:
         node_id: int,
         player_info: dict[str, object] | None,
     ) -> None:
-        """Draw stick figures and overlay text onto a pygame surface."""
+        """Draw stick figures with depth shading and anatomical widths."""
         import pygame
 
-        surface.fill(BG_COLOR)
+        surface.fill(BG_COLOR)  # type: ignore[union-attr]
 
         players = self._positions[node_id]  # type: ignore[index]
-        projected = self._project_joints(players)
+        proj = self._project_joints(players)
 
-        for p_idx, pts in enumerate(projected):
-            color = PLAYER_COLORS[p_idx]
+        # Compute z range across all joints of both players
+        all_z = [z for player_zs in proj.z_values for z in player_zs]
+        z_min = min(all_z)
+        z_max = max(all_z)
+        z_range = z_max - z_min
 
-            # Draw segments
-            for j_from, j_to in SEGMENTS:
-                if j_from < len(pts) and j_to < len(pts):
-                    pygame.draw.line(surface, color, pts[j_from], pts[j_to], 3)
+        # Build draw commands: (z_depth, draw_callable)
+        draw_cmds: list[tuple[float, object]] = []
 
-            # Draw joint spheres
+        for p_idx in range(len(proj.screen_coords)):
+            pts = proj.screen_coords[p_idx]
+            zs = proj.z_values[p_idx]
+            base_color = PLAYER_COLORS[p_idx]
+
+            # Segment draw commands
+            for seg in SEGMENT_DEFS:
+                if seg.joint_from >= len(pts) or seg.joint_to >= len(pts):
+                    continue
+                avg_z = (zs[seg.joint_from] + zs[seg.joint_to]) / 2.0
+                color = _depth_shaded_color(base_color, avg_z, z_min, z_range)
+                pixel_width = max(2, int(seg.radius_center * 2 * proj.scale))
+                pt_a = pts[seg.joint_from]
+                pt_b = pts[seg.joint_to]
+                draw_cmds.append((
+                    avg_z,
+                    lambda s=surface, c=color, a=pt_a, b=pt_b, w=pixel_width: (
+                        pygame.draw.line(s, c, a, b, w)
+                    ),
+                ))
+
+            # Joint sphere draw commands
             for j_idx in SPHERE_JOINTS:
-                if j_idx < len(pts):
-                    radius = 6 if j_idx == HEAD else 4
-                    pygame.draw.circle(surface, color, pts[j_idx], radius)
+                if j_idx >= len(pts):
+                    continue
+                z_val = zs[j_idx]
+                color = _depth_shaded_color(base_color, z_val, z_min, z_range)
+                pixel_radius = max(2, int(JOINT_RADII[j_idx] * proj.scale))
+                center = pts[j_idx]
+                draw_cmds.append((
+                    z_val,
+                    lambda s=surface, c=color, ct=center, r=pixel_radius: (
+                        pygame.draw.circle(s, c, ct, r)
+                    ),
+                ))
 
-        # Overlay text
+        # Painter's algorithm: draw furthest (highest z) first
+        draw_cmds.sort(key=lambda cmd: cmd[0], reverse=True)
+        for _, draw_fn in draw_cmds:
+            draw_fn()
+
+        # Overlay text (always on top)
         if self._font is None:
+            if not pygame.font.get_init():
+                pygame.font.init()
             self._font = pygame.font.SysFont("monospace", 14)
 
         if player_info:
@@ -214,7 +318,7 @@ class FrameRenderer:
 
         for i, line in enumerate(lines):
             text_surf = self._font.render(line, True, TEXT_COLOR)
-            surface.blit(text_surf, (8, 4 + i * 16))
+            surface.blit(text_surf, (8, 4 + i * 16))  # type: ignore[union-attr]
 
     def render_frame(
         self,
