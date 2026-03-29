@@ -89,16 +89,16 @@ class BJJEnv(gym.Env):
         Creates action mask for the current player based on the legal moves available to them
 
         Returns:
-        np.ndarray: A boolean array of shape (n,) where n is the total number of moves in the game (~700).
-                    Each element is either 0 (False) or 1 (True), where:
-                    - 1 (True) indicates a legal move
-                    - 0 (False) indicates an illegal move
+        np.ndarray: An int8 array of shape (n,) where n is the total number of moves in the game (~700).
+                    Each element is 0 or 1, where:
+                    - 1 indicates a legal move
+                    - 0 indicates an illegal move
         """
         possible_moves = self.game.game_state.get_possible_moves(
             self.game.current_player.is_top,
             self.game.current_player.is_bottom
         )
-        mask = np.zeros(len(self.edge_ids), dtype=bool)  # mask is length of all possible actions in the entire game
+        mask = np.zeros(len(self.edge_ids), dtype=np.int8)  # mask is length of all possible actions in the entire game
         for move in possible_moves:
             #sets only the legal moves to 1
             edge_id = move[1]['id']
