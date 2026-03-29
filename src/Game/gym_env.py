@@ -7,11 +7,12 @@ import random
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
 class BJJEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 2}
+    metadata = {"render_modes": ["human", "rgb_array", "ansi", "graph"], "render_fps": 2}
 
     def __init__(self, render_mode: str | None = None) -> None:
         self.render_mode = render_mode
         self._renderer: object | None = None  # lazy FrameRenderer
+        self._graph_renderer: object | None = None  # lazy GraphRenderer
 
         self.game = Game("BJJ Match")
         self.game.initialize_game("Player1", "Player2")
@@ -121,7 +122,17 @@ class BJJEnv(gym.Env):
             # Reinitialize if there are no valid moves for the starting position
             self.game.initialize_game("Player1", "Player2")
 
-        if self.render_mode == "human":
+        if self.render_mode == "graph":
+            self._ensure_graph_renderer()
+            node = self.game.game_state.current_node
+            node_data = self.game.game_state.board.get_node_data(node)
+            self._graph_renderer.set_initial_state(
+                node_id=node,
+                description=node_data.get("description", str(node)),
+                p1_is_top=self.game.player1.is_top,
+            )
+
+        if self.render_mode in ("human", "graph"):
             self.render()
 
         return self._get_obs(), {"action_mask": self._get_action_mask()}
@@ -134,6 +145,26 @@ class BJJEnv(gym.Env):
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
         move = (start, self.game.board.get_edge_data(start, end))
+
+        # Record move for graph renderer before play_turn mutates state
+        if self.render_mode == "graph":
+            self._ensure_graph_renderer()
+            from render.graph_renderer import MoveRecord
+            from_node = self.game.game_state.current_node
+            mover = 0 if self.game.current_player is self.game.player1 else 1
+            swaps = move[1].get('swaps_players', False)
+            p1_is_top_after = self.game.player1.is_top
+            if swaps:
+                p1_is_top_after = not p1_is_top_after
+            node_data = self.game.game_state.board.get_node_data(end)
+            self._graph_renderer.record_move(MoveRecord(
+                from_node=from_node,
+                to_node=end,
+                mover=mover,
+                p1_is_top=p1_is_top_after,
+                turn=self.game.turn_count + 1,
+            ))
+
         self.game.play_turn(move)
         self.game.turn_count += 1
 
@@ -153,7 +184,7 @@ class BJJEnv(gym.Env):
 
         info = {"action_mask": self._get_action_mask()}
 
-        if self.render_mode == "human":
+        if self.render_mode in ("human", "graph"):
             self.render()
 
         return obs, reward, terminated, truncated, info
@@ -178,6 +209,11 @@ class BJJEnv(gym.Env):
             import render.frame_renderer
             self._renderer = render.frame_renderer.FrameRenderer()
 
+    def _ensure_graph_renderer(self) -> None:
+        if self._graph_renderer is None:
+            from render.graph_renderer import GraphRenderer
+            self._graph_renderer = GraphRenderer()
+
     def _get_player_info(self) -> dict[str, object]:
         """Build display-info dict for the renderer overlay text."""
         node = self.game.game_state.current_node
@@ -195,6 +231,13 @@ class BJJEnv(gym.Env):
             return None
         if self.render_mode == "ansi":
             return self._render_ansi()
+        if self.render_mode == "graph":
+            self._ensure_graph_renderer()
+            return self._graph_renderer.render_graph(
+                render_mode="human",
+                fps=self.metadata["render_fps"],
+                player_info=self._get_player_info(),
+            )
         # "human" or "rgb_array"
         self._ensure_renderer()
         return self._renderer.render_frame(  # type: ignore[union-attr]
@@ -222,6 +265,9 @@ class BJJEnv(gym.Env):
         if self._renderer is not None:
             self._renderer.close()  # type: ignore[union-attr]
             self._renderer = None
+        if self._graph_renderer is not None:
+            self._graph_renderer.close()  # type: ignore[union-attr]
+            self._graph_renderer = None
         super().close()
 
 
