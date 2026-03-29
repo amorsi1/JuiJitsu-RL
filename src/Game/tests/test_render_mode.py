@@ -2,11 +2,13 @@
 
 Verifies that BJJEnv correctly implements Gymnasium's render_mode protocol:
 - metadata declares supported render modes
-- render() dispatches based on render_mode (None, "ansi", "rgb_array", "human")
+- render() dispatches based on render_mode (None, "ansi", "rgb_array", "human", "graph")
 - FrameRenderer is lazily initialized and properly cleaned up
 - Auto-rendering in step() and reset() for human mode
 - gymnasium.make() passes render_mode through kwargs
 """
+
+from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
@@ -263,5 +265,64 @@ def test_make_with_render_mode() -> None:
     env = gymnasium.make("BJJEnv-v0", render_mode="rgb_array")
     try:
         assert env.unwrapped.render_mode == "rgb_array"
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# 13. Graph render mode — metadata
+# ---------------------------------------------------------------------------
+
+
+def test_metadata_includes_graph() -> None:
+    """BJJEnv.metadata must include 'graph' as a supported render mode."""
+    assert "graph" in BJJEnv.metadata["render_modes"]
+
+
+# ---------------------------------------------------------------------------
+# 14. Graph render mode — lazy init
+# ---------------------------------------------------------------------------
+
+
+def test_graph_renderer_lazy_init() -> None:
+    """After construction with render_mode='graph', _graph_renderer must be None."""
+    env = BJJEnv(render_mode="graph")
+    try:
+        assert env._graph_renderer is None
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# 15. Graph render mode — close cleans up
+# ---------------------------------------------------------------------------
+
+
+@patch("render.graph_renderer.GraphRenderer")
+def test_close_cleans_graph_renderer(mock_graph_cls: MagicMock) -> None:
+    """close() must call graph_renderer.close() and set _graph_renderer to None."""
+    mock_instance = MagicMock()
+    mock_graph_cls.return_value = mock_instance
+
+    env = BJJEnv(render_mode="graph")
+    # Simulate lazy init by assigning the mock directly
+    env._graph_renderer = mock_instance
+
+    env.close()
+
+    mock_instance.close.assert_called_once()
+    assert env._graph_renderer is None
+
+
+# ---------------------------------------------------------------------------
+# 16. Graph render mode — gymnasium.make
+# ---------------------------------------------------------------------------
+
+
+def test_make_with_graph_mode() -> None:
+    """gymnasium.make('BJJEnv-v0', render_mode='graph') must pass render_mode through."""
+    env = gymnasium.make("BJJEnv-v0", render_mode="graph")
+    try:
+        assert env.unwrapped.render_mode == "graph"
     finally:
         env.close()
