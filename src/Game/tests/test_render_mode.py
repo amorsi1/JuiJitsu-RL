@@ -55,9 +55,9 @@ def env_rgb() -> BJJEnv:
 
 
 def test_metadata_declares_render_modes(env_no_render: BJJEnv) -> None:
-    """BJJEnv.metadata must list 'human', 'rgb_array', and 'ansi' as supported render modes."""
+    """BJJEnv.metadata must list all supported render modes."""
     assert "render_modes" in env_no_render.metadata
-    expected = ["human", "rgb_array", "ansi"]
+    expected = ["human", "rgb_array", "ansi", "graph"]
     assert env_no_render.metadata["render_modes"] == expected
 
 
