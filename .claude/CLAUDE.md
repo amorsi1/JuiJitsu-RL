@@ -71,7 +71,7 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 - **State index for Q-table**: `position * 2 + is_top` (encoded by `state_to_index()`)
 - **Rewards**: +300 win / -300 loss, +1×cumulative point gap (TODO: switch to marginal delta), +0.5×on_top
 - **Termination**: `terminated=True` on tap/position win; `truncated=True` on turn limit
-- **Render modes**: `"human"` (pygame window), `"rgb_array"` (numpy array), `"ansi"` (text). Pass via `gymnasium.make("BJJEnv-v0", render_mode="human")`. Renderer is lazily initialized — no pygame overhead during training. Auto-renders on `step()`/`reset()` in human mode.
+- **Render modes**: `"human"` (pygame window with stick figures), `"rgb_array"` (numpy array), `"ansi"` (text), `"graph"` (pygame window with directed graph of traversed positions). Pass via `gymnasium.make("BJJEnv-v0", render_mode="human")`. Renderers are lazily initialized — no pygame overhead during training. Auto-renders on `step()`/`reset()` in human and graph modes. Graph mode records moves before `play_turn()` to capture pre-mutation state.
 
 `q_learning()` is the active standalone training function. It uses epsilon-greedy exploration with configurable decay (`epsilon`, `epsilon_min`, `epsilon_decay` params). `QLearningAgent` is an incomplete class-based wrapper — `_initialize_state_space` still references `self.board` (should be `self.env.G`) and is not used for training.
 
@@ -80,6 +80,8 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 ### 4. Visualization (`render/`)
 
 **Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D figures using pygame with orthographic XY projection. Features: z-depth shading (closer parts brighter, 0.4–1.0 brightness range), anatomical segment widths from JS viewer proportions (`SEGMENT_DEFS` with `radius_center`), proportional joint radii (`JOINT_RADII`), and painter's algorithm draw order (back-to-front across both players for correct occlusion). Uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and 28-segment connectivity with `SegmentDef` NamedTuples ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
+
+**Graph renderer** (`render/graph_renderer.py`): `GraphRenderer` draws a directed graph of positions visited during gameplay using pygame. Nodes show truncated position names inside circles; node outline color indicates which player is on top (red=P1, blue=P2). Edges are directed arrows colored by who made the move. Uses `networkx.spring_layout` with position seeding for stable incremental layout. A sliding window (default 10 nodes) prunes old nodes to keep the view readable. Integrated into BJJEnv via `render_mode="graph"`. Key dataclasses: `MoveRecord` (captured before `play_turn()` mutates state), `VisibleNode`, `VisibleEdge`.
 
 **Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py` and `visualize_game_3d.py` at the repo root. Independent of `render_mode`.
 
