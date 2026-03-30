@@ -49,6 +49,7 @@ class MoveRecord:
     mover: int  # 0 = player1, 1 = player2
     p1_is_top: bool
     turn: int
+    description: str = ""
 
 
 @dataclass
@@ -85,7 +86,7 @@ class GraphRenderer:
         self._current_node: int | None = None
 
         # Layout caching
-        self._cached_layout: dict[int, tuple[float, float]] = {}
+        self._layout: dict[int, tuple[float, float]] = {}
         self._layout_dirty: bool = True
 
         # Pygame resources (lazy init)
@@ -101,7 +102,7 @@ class GraphRenderer:
     def set_initial_state(self, node_id: int, description: str, p1_is_top: bool) -> None:
         self._visible_nodes.clear()
         self._visible_edges.clear()
-        self._cached_layout.clear()
+        self._layout.clear()
         self._current_node = node_id
         self._layout_dirty = True
 
@@ -120,20 +121,19 @@ class GraphRenderer:
             vn.last_seen_turn = move.turn
             vn.p1_is_top = move.p1_is_top
         else:
-            # Need description from the graph — use node_id as fallback
             self._visible_nodes[move.to_node] = VisibleNode(
                 node_id=move.to_node,
-                description=str(move.to_node),
+                description=move.description or str(move.to_node),
                 p1_is_top=move.p1_is_top,
                 first_seen_turn=move.turn,
                 last_seen_turn=move.turn,
             )
             # Seed new node position near parent in cached layout
-            if move.from_node in self._cached_layout:
-                px, py = self._cached_layout[move.from_node]
+            if move.from_node in self._layout:
+                px, py = self._layout[move.from_node]
                 jitter_x = (np.random.random() - 0.5) * 0.2
                 jitter_y = (np.random.random() - 0.5) * 0.2
-                self._cached_layout[move.to_node] = (px + jitter_x, py + jitter_y)
+                self._layout[move.to_node] = (px + jitter_x, py + jitter_y)
             self._layout_dirty = True
 
         self._visible_edges.append(VisibleEdge(
@@ -198,7 +198,7 @@ class GraphRenderer:
             if oldest_id is None:
                 break
             del self._visible_nodes[oldest_id]
-            self._cached_layout.pop(oldest_id, None)
+            self._layout.pop(oldest_id, None)
             # Remove edges referencing the pruned node
             self._visible_edges = [
                 e for e in self._visible_edges
@@ -211,8 +211,8 @@ class GraphRenderer:
     # -------------------------------------------------------------------
 
     def _compute_layout(self) -> dict[int, tuple[float, float]]:
-        if not self._layout_dirty and self._cached_layout:
-            return self._cached_layout
+        if not self._layout_dirty and self._layout:
+            return self._layout
 
         g = nx.DiGraph()
         for nid in self._visible_nodes:
@@ -223,27 +223,27 @@ class GraphRenderer:
 
         # Seed positions from cache for stable layout
         pos_seed: dict[int, tuple[float, float]] | None = None
-        if self._cached_layout:
+        if self._layout:
             pos_seed = {
-                nid: self._cached_layout[nid]
+                nid: self._layout[nid]
                 for nid in g.nodes
-                if nid in self._cached_layout
+                if nid in self._layout
             }
             if not pos_seed:
                 pos_seed = None
 
         if len(g.nodes) == 0:
-            self._cached_layout = {}
+            self._layout = {}
         elif len(g.nodes) == 1:
             nid = next(iter(g.nodes))
-            self._cached_layout = {nid: (0.0, 0.0)}
+            self._layout = {nid: (0.0, 0.0)}
         else:
-            self._cached_layout = nx.spring_layout(
+            self._layout = nx.spring_layout(
                 g, pos=pos_seed, seed=42, iterations=50, k=1.5 / math.sqrt(len(g.nodes))
             )
 
         self._layout_dirty = False
-        return self._cached_layout
+        return self._layout
 
     # -------------------------------------------------------------------
     # Internal — drawing

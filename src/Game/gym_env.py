@@ -163,6 +163,7 @@ class BJJEnv(gym.Env):
                 mover=mover,
                 p1_is_top=p1_is_top_after,
                 turn=self.game.turn_count + 1,
+                description=node_data.get("description", str(end)),
             ))
 
         self.game.play_turn(move)
