@@ -125,7 +125,7 @@ class BJJEnv(gym.Env):
             self.game.switch_players()
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
-        move = (start, self.game.board.get_edge_data(start, end))
+        move = (end, self.game.board.get_edge_data(start, end))
         self.game.play_turn(move)
         self.game.turn_count += 1
 
