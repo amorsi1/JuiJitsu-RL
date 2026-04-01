@@ -343,16 +343,27 @@ def test_minimum_node_separation() -> None:
 
 
 def test_nodes_not_collinear() -> None:
-    """A chain of moves produces some horizontal spread — nodes are not all stacked on one X."""
+    """Nodes at the same terminal-distance level get different X positions.
+
+    Use a branching graph: 0→1, 0→2, 1→3, 2→3.
+    Nodes 1 and 2 are both at distance 2 from terminal (3), so they share
+    the same target Y. _find_x_position must displace one horizontally.
+    """
     g: nx.DiGraph = nx.DiGraph()
-    g.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
+    g.add_edges_from([(0, 1), (0, 2), (1, 3), (2, 3)])
+    # Terminal: node 3 (zero out-edges), dist=0
+    # Nodes 1, 2: dist=1 → same Y
+    # Node 0: dist=2
 
     renderer = GraphRenderer(source_graph=g)
     renderer.set_initial_state(node_id=0, description="n0", p1_is_top=True)
-    for i, (frm, to) in enumerate([(0, 1), (1, 2), (2, 3), (3, 4)], start=1):
-        renderer.record_move(MoveRecord(from_node=frm, to_node=to, mover=i % 2,
-                                        p1_is_top=True, turn=i))
+    renderer.record_move(MoveRecord(from_node=0, to_node=1, mover=0, p1_is_top=True, turn=1))
+    renderer.record_move(MoveRecord(from_node=0, to_node=2, mover=1, p1_is_top=False, turn=2))
     renderer._compute_layout()
 
-    unique_x = {round(pos[0], 2) for pos in renderer._layout.values()}
-    assert len(unique_x) > 1, "All nodes share the same X — layout is fully collinear"
+    # Nodes 1 and 2 must have different X to avoid overlap
+    x1 = renderer._layout[1][0]
+    x2 = renderer._layout[2][0]
+    assert abs(x1 - x2) >= MIN_NODE_SEP * 0.9, (
+        f"Nodes 1 and 2 share the same Y but overlap in X: x1={x1:.3f}, x2={x2:.3f}"
+    )
