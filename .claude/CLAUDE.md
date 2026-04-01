@@ -83,6 +83,8 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 **Graph renderer** (`render/graph_renderer.py`): `GraphRenderer` draws a directed graph of positions visited during gameplay using pygame. Nodes show truncated position names inside circles; node outline color indicates which player is on top (red=P1, blue=P2). Edges are directed arrows colored by who made the move. Uses `networkx.spring_layout` with position seeding for stable incremental layout. A sliding window (default 10 nodes) prunes old nodes to keep the view readable. Integrated into BJJEnv via `render_mode="graph"`. Key dataclasses: `MoveRecord` (captured before `play_turn()` mutates state), `VisibleNode`, `VisibleEdge`.
 
+Layout stability features: existing nodes are pinned via `spring_layout(fixed=...)` so they never move after placement. New nodes are seeded at the angle that maximizes separation from the parent's existing neighbors (`_best_angle`), creating natural branching. Viewport only grows (never shrinks except on prune/reset) with uniform-scale screen mapping. Dim structural edges from the source graph (`source_graph` param, passed as `self.G` from BJJEnv) show connections between visible nodes that weren't traversed, giving topological context. New nodes animate in via ease-out interpolation over ~500ms (12 frames at 24fps).
+
 **Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py` and `visualize_game_3d.py` at the repo root. Independent of `render_mode`.
 
 ## Data Files
