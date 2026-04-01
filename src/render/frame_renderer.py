@@ -406,6 +406,64 @@ class FrameRenderer:
         arr = pygame.surfarray.array3d(offscreen)
         return arr.transpose(1, 0, 2).astype(np.uint8)
 
+    def render_transition(
+        self,
+        transition_id: int,
+        node_id: int,
+        render_mode: str,
+        fps: int = 15,
+        player_info: dict[str, object] | None = None,
+    ) -> list[np.ndarray] | None:
+        """Render a smooth transition animation.
+
+        Plays back keyframes from the transition at the given fps.
+        Returns list of np.ndarray frames for 'rgb_array', None for 'human'.
+        Falls back to a static render_frame() if transition data is not found.
+        """
+        import pygame
+
+        self._ensure_positions()
+        transition = self._get_transition(transition_id)
+
+        if transition is None:
+            result = self.render_frame(node_id, render_mode, fps, player_info)
+            return [result] if render_mode == "rgb_array" and result is not None else result
+
+        frames = list(transition['frames'])
+
+        # Reverse detection: if we arrived at from_node from to_node, play backwards
+        if (
+            self._last_node_id == transition['to_node']
+            and node_id == transition['from_node']
+        ):
+            frames = frames[::-1]
+
+        if not transition['detailed']:
+            frames = self._interpolate_midpoints(frames)
+
+        if render_mode == "human":
+            self._ensure_display()
+            output_frames = None
+            for frame_data in frames:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.close()
+                        self._last_node_id = node_id
+                        return None
+                self._draw_players(self._screen, frame_data, player_info)
+                pygame.display.flip()
+                self._clock.tick(fps)  # type: ignore[union-attr]
+        else:  # rgb_array
+            output_frames = []
+            for frame_data in frames:
+                offscreen = pygame.Surface((self._width, self._height))
+                self._draw_players(offscreen, frame_data, player_info)
+                arr = pygame.surfarray.array3d(offscreen)
+                output_frames.append(arr.transpose(1, 0, 2).astype(np.uint8))
+
+        self._last_node_id = node_id
+        return output_frames if render_mode == "rgb_array" else None
+
     def close(self) -> None:
         """Clean up pygame resources."""
         if self._screen is not None:
