@@ -7,12 +7,13 @@ import random
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
 class BJJEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array", "ansi", "graph"], "render_fps": 2}
+    metadata = {"render_modes": ["human", "rgb_array", "ansi", "graph"], "render_fps": 2, "render_transition_fps": 15}
 
     def __init__(self, render_mode: str | None = None) -> None:
         self.render_mode = render_mode
         self._renderer: object | None = None  # lazy FrameRenderer
         self._graph_renderer: object | None = None  # lazy GraphRenderer
+        self._pending_transition_id: int | None = None
 
         self.game = Game("BJJ Match")
         self.game.initialize_game("Player1", "Player2")
@@ -121,6 +122,7 @@ class BJJEnv(gym.Env):
         while not any(self._get_action_mask()):
             # Reinitialize if there are no valid moves for the starting position
             self.game.initialize_game("Player1", "Player2")
+        self._pending_transition_id = None
 
         if self.render_mode == "graph":
             self._ensure_graph_renderer()
@@ -145,6 +147,7 @@ class BJJEnv(gym.Env):
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
         move = (end, self.game.board.get_edge_data(start, end))
+        self._pending_transition_id = move[1].get('id')
 
         # Record move for graph renderer before play_turn mutates state
         if self.render_mode == "graph":
@@ -226,7 +229,7 @@ class BJJEnv(gym.Env):
             "turn": self.game.turn_count,
         }
 
-    def render(self) -> np.ndarray | str | None:
+    def render(self) -> np.ndarray | list[np.ndarray] | str | None:
         """Render the environment according to render_mode."""
         if self.render_mode is None:
             return None
@@ -239,6 +242,17 @@ class BJJEnv(gym.Env):
                 fps=self.metadata["render_fps"],
                 player_info=self._get_player_info(),
             )
+        if self._pending_transition_id is not None and self.render_mode in ("human", "rgb_array"):
+            self._ensure_renderer()
+            result = self._renderer.render_transition(  # type: ignore[union-attr]
+                transition_id=self._pending_transition_id,
+                node_id=self.game.game_state.current_node,
+                render_mode=self.render_mode,
+                fps=self.metadata["render_transition_fps"],
+                player_info=self._get_player_info(),
+            )
+            self._pending_transition_id = None
+            return result
         # "human" or "rgb_array"
         self._ensure_renderer()
         return self._renderer.render_frame(  # type: ignore[union-attr]

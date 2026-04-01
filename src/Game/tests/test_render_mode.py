@@ -215,7 +215,8 @@ def test_close_idempotent(mock_renderer_cls: MagicMock) -> None:
 def test_step_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
     """In human mode, step() must call render() automatically."""
     mock_instance = MagicMock()
-    mock_instance.render_frame.return_value = None  # human mode returns None
+    mock_instance.render_frame.return_value = None  # used by reset()
+    mock_instance.render_transition.return_value = None
     mock_renderer_cls.return_value = mock_instance
 
     env = BJJEnv(render_mode="human")
@@ -223,6 +224,7 @@ def test_step_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
         obs, info = env.reset()
         # Clear any calls from reset's auto-render
         mock_instance.render_frame.reset_mock()
+        mock_instance.render_transition.reset_mock()
 
         # Pick a valid action from the mask
         valid_actions = np.where(info["action_mask"])[0]
@@ -230,7 +232,7 @@ def test_step_auto_renders_in_human_mode(mock_renderer_cls: MagicMock) -> None:
         action = valid_actions[0]
 
         env.step(action)
-        mock_instance.render_frame.assert_called()
+        mock_instance.render_transition.assert_called_once()
     finally:
         env.close()
 
