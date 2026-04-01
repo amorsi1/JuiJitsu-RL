@@ -236,18 +236,17 @@ class FrameRenderer:
 
         return ProjectionResult(screen_coords=screen_coords, z_values=z_values, scale=scale)
 
-    def _draw_frame(
+    def _draw_players(
         self,
         surface: object,
-        node_id: int,
+        players: list[list[list[float]]],
         player_info: dict[str, object] | None,
     ) -> None:
-        """Draw stick figures with depth shading and anatomical widths."""
+        """Draw stick figures from raw joint data (2 players × 23 joints × [x,y,z])."""
         import pygame
 
         surface.fill(BG_COLOR)  # type: ignore[union-attr]
 
-        players = self._positions[node_id]  # type: ignore[index]
         proj = self._project_joints(players)
 
         # Compute z range across all joints of both players
@@ -308,17 +307,24 @@ class FrameRenderer:
 
         if player_info:
             lines = [
-                f"Position: {player_info.get('description', node_id)}",
+                f"Position: {player_info.get('description', '')}",
                 f"P1: {player_info.get('p1_points', 0)} pts  "
                 f"P2: {player_info.get('p2_points', 0)} pts  "
                 f"Turn: {player_info.get('turn', '?')}",
             ]
-        else:
-            lines = [f"Node: {node_id}"]
+            for i, line in enumerate(lines):
+                text_surf = self._font.render(line, True, TEXT_COLOR)
+                surface.blit(text_surf, (8, 4 + i * 16))  # type: ignore[union-attr]
 
-        for i, line in enumerate(lines):
-            text_surf = self._font.render(line, True, TEXT_COLOR)
-            surface.blit(text_surf, (8, 4 + i * 16))  # type: ignore[union-attr]
+    def _draw_frame(
+        self,
+        surface: object,
+        node_id: int,
+        player_info: dict[str, object] | None,
+    ) -> None:
+        """Draw stick figures with depth shading and anatomical widths."""
+        players = self._positions[node_id]  # type: ignore[index]
+        self._draw_players(surface, players, player_info)
 
     def render_frame(
         self,
