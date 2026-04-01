@@ -42,8 +42,66 @@ MARGIN_TOP: int = 40
 ANIM_FRAMES: int = 12
 ANIM_FPS: int = 24
 
-# Placement distance (in layout-space units) for new nodes from their parent
-PLACEMENT_DISTANCE: float = 0.4
+# Hierarchical layout
+Y_SCALE: float = 0.4       # layout units per terminal-distance level
+MIN_NODE_SEP: float = 0.35  # min 2D distance between any two nodes
+
+
+# ---------------------------------------------------------------------------
+# Terminal-distance computation
+# ---------------------------------------------------------------------------
+
+
+def _compute_terminal_distances(
+    graph: nx.DiGraph,
+) -> tuple[dict[int, int], int]:
+    """Compute shortest directed distance from every node to the nearest terminal.
+
+    Uses multi-source BFS on the reversed graph so a single pass covers all sources.
+    Terminal nodes are:
+      - Nodes with a truthy 'winner' attribute
+      - Nodes with zero out-edges (dead ends)
+      - Destinations of edges with tap=True
+
+    Args:
+        graph: The source directed graph.
+
+    Returns:
+        Tuple of (distances, max_dist) where distances maps node_id -> int distance.
+        Unreachable nodes are assigned max_dist + 1.
+    """
+    terminal_nodes: set[int] = set()
+
+    for nid, data in graph.nodes(data=True):
+        if data.get("winner") or graph.out_degree(nid) == 0:
+            terminal_nodes.add(nid)
+
+    for _u, v, data in graph.edges(data=True):
+        if data.get("tap"):
+            terminal_nodes.add(v)
+
+    if not terminal_nodes:
+        return {}, 0
+
+    rev = graph.reverse(copy=False)
+    distances: dict[int, int] = {nid: 0 for nid in terminal_nodes}
+    queue: list[int] = list(terminal_nodes)
+    head = 0
+    while head < len(queue):
+        node = queue[head]
+        head += 1
+        for neighbor in rev.successors(node):
+            if neighbor not in distances:
+                distances[neighbor] = distances[node] + 1
+                queue.append(neighbor)
+
+    max_dist = max(distances.values()) if distances else 0
+    unreachable_dist = max_dist + 1
+    for nid in graph.nodes():
+        if nid not in distances:
+            distances[nid] = unreachable_dist
+
+    return distances, max_dist
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +154,12 @@ class GraphRenderer:
         self._height = height
         self._window_size = window_size
         self._source_graph = source_graph
+
+        if source_graph is not None:
+            self._terminal_distances, self._max_terminal_dist = _compute_terminal_distances(source_graph)
+        else:
+            self._terminal_distances: dict[int, int] = {}
+            self._max_terminal_dist: int = 0
 
         self._visible_nodes: dict[int, VisibleNode] = {}
         self._visible_edges: list[VisibleEdge] = []
@@ -281,105 +345,62 @@ class GraphRenderer:
         if len(self._visible_nodes) == 1:
             nid = next(iter(self._visible_nodes))
             if nid not in self._layout:
-                self._layout[nid] = (0.0, 0.0)
+                dist = self._terminal_distances.get(nid, self._max_terminal_dist + 1)
+                self._layout[nid] = (0.0, -dist * Y_SCALE)
             self._layout_dirty = False
             self._update_viewport()
             return self._layout
 
         if not new_nodes:
-            # No new nodes — layout is already complete
             self._layout_dirty = False
             return self._layout
 
-        # Build subgraph of visible nodes
-        g = nx.DiGraph()
-        for nid in self._visible_nodes:
-            g.add_node(nid)
-        for edge in self._visible_edges:
-            if edge.from_node in self._visible_nodes and edge.to_node in self._visible_nodes:
-                g.add_edge(edge.from_node, edge.to_node)
-
-        # Pin all existing nodes; only new nodes are free to move
-        fixed_nodes = [nid for nid in g.nodes if nid in self._layout and nid not in new_nodes]
-        pos_seed: dict[int, tuple[float, float]] = dict(self._layout)
-
-        # Seed new nodes using best-angle placement from their parent
         for nid in new_nodes:
+            dist = self._terminal_distances.get(nid, self._max_terminal_dist + 1)
+            target_y = -dist * Y_SCALE
             parent = next(
                 (e.from_node for e in self._visible_edges
-                 if e.to_node == nid and e.from_node in pos_seed),
+                 if e.to_node == nid and e.from_node in self._layout),
                 None,
             )
-            if parent is not None:
-                angle = self._best_angle(parent)
-                px, py = pos_seed[parent]
-                pos_seed[nid] = (
-                    px + PLACEMENT_DISTANCE * math.cos(angle),
-                    py + PLACEMENT_DISTANCE * math.sin(angle),
-                )
-            else:
-                pos_seed[nid] = (np.random.uniform(-0.5, 0.5), np.random.uniform(-0.5, 0.5))
-
-        # Run spring layout with existing nodes pinned
-        if fixed_nodes:
-            result = nx.spring_layout(
-                g, pos=pos_seed, fixed=fixed_nodes, seed=42,
-                iterations=50, k=1.5 / math.sqrt(max(len(g.nodes), 2)),
-            )
-        else:
-            result = nx.spring_layout(
-                g, pos=pos_seed, seed=42,
-                iterations=50, k=1.5 / math.sqrt(max(len(g.nodes), 2)),
-            )
-
-        # Update layout: keep pinned positions exactly, take new from result
-        for nid in result:
-            if nid in new_nodes:
-                self._layout[nid] = (float(result[nid][0]), float(result[nid][1]))
-            # Pinned nodes keep their existing position (don't overwrite)
+            parent_x = self._layout[parent][0] if parent is not None else 0.0
+            self._layout[nid] = (self._find_x_position(parent_x, target_y), target_y)
 
         self._layout_dirty = False
         self._update_viewport()
         return self._layout
 
-    def _best_angle(self, parent_id: int) -> float:
-        """Find the angle from parent that maximizes separation from its existing neighbors."""
-        parent_pos = self._layout.get(parent_id)
-        if not parent_pos:
-            return np.random.uniform(0, 2 * math.pi)
+    def _find_x_position(self, parent_x: float, target_y: float) -> float:
+        """Find an X coordinate at target_y that maintains MIN_NODE_SEP from all existing nodes.
 
-        # Collect angles to all laid-out neighbors of the parent
-        neighbor_angles: list[float] = []
-        neighbor_ids = set()
-        for e in self._visible_edges:
-            if e.from_node == parent_id and e.to_node in self._layout:
-                neighbor_ids.add(e.to_node)
-            elif e.to_node == parent_id and e.from_node in self._layout:
-                neighbor_ids.add(e.from_node)
+        Tries parent_x first, then alternates ±MIN_NODE_SEP, ±2×MIN_NODE_SEP, ...
+        Falls back to a small random offset after 20 attempts.
 
-        for nid in neighbor_ids:
-            pos = self._layout[nid]
-            dx = pos[0] - parent_pos[0]
-            dy = pos[1] - parent_pos[1]
-            if abs(dx) > 1e-9 or abs(dy) > 1e-9:
-                neighbor_angles.append(math.atan2(dy, dx))
+        Args:
+            parent_x: X coordinate of the parent node.
+            target_y: Target Y coordinate for the new node.
 
-        if not neighbor_angles:
-            return np.random.uniform(0, 2 * math.pi)
+        Returns:
+            X coordinate satisfying the minimum separation constraint.
+        """
+        existing = list(self._layout.values())
 
-        # Find the largest angular gap and place new node in the middle of it
-        neighbor_angles.sort()
-        best_angle = neighbor_angles[0] + math.pi  # default: opposite of first
-        max_gap = 0.0
-        for i in range(len(neighbor_angles)):
-            next_a = neighbor_angles[(i + 1) % len(neighbor_angles)]
-            cur_a = neighbor_angles[i]
-            gap = (next_a - cur_a) % (2 * math.pi)
-            if gap > max_gap:
-                max_gap = gap
-                best_angle = cur_a + gap / 2
+        def _clear(cx: float) -> bool:
+            return all(
+                math.sqrt((cx - ex) ** 2 + (target_y - ey) ** 2) >= MIN_NODE_SEP
+                for ex, ey in existing
+            )
 
-        return best_angle
+        if _clear(parent_x):
+            return parent_x
+
+        for step in range(1, 21):
+            for sign in (1, -1):
+                candidate = parent_x + sign * step * MIN_NODE_SEP
+                if _clear(candidate):
+                    return candidate
+
+        return parent_x + np.random.uniform(-MIN_NODE_SEP * 0.5, MIN_NODE_SEP * 0.5)
 
     # -------------------------------------------------------------------
     # Internal — viewport
