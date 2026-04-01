@@ -85,7 +85,10 @@ def test_client_can_connect(server):
     """A WebSocket client should be able to connect to the server."""
     async def _test():
         async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
-            assert ws.open
+            if hasattr(ws, "open"):
+                assert ws.open
+            else:
+                assert ws.state.name == "OPEN"
 
     asyncio.run(_test())
 
