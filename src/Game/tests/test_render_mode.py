@@ -328,3 +328,47 @@ def test_make_with_graph_mode() -> None:
         assert env.unwrapped.render_mode == "graph"
     finally:
         env.close()
+
+
+# ---------------------------------------------------------------------------
+# 17. Teleport detection in graph mode
+# ---------------------------------------------------------------------------
+
+
+def test_teleport_calls_set_initial_state() -> None:
+    """When step() detects a teleport (edge source != current node), set_initial_state is called."""
+    from unittest.mock import MagicMock
+
+    env = BJJEnv(render_mode="graph")
+    try:
+        obs, info = env.reset()
+
+        # Replace graph renderer with a mock after reset initialises it
+        mock_gr = MagicMock()
+        env._graph_renderer = mock_gr
+
+        # Pick any valid action
+        valid_actions = np.where(info["action_mask"])[0]
+        assert len(valid_actions) > 0
+        action = int(valid_actions[0])
+
+        # Find (start, end) for this action
+        edge_id = env.index_to_id[action]
+        start, _end = env.edge_id_to_nodes[edge_id]
+
+        # Force current_node to differ from start to simulate a teleport
+        different_node = (start + 1) % env.num_nodes
+        if different_node == start:
+            different_node = (start + 2) % env.num_nodes
+        env.game.game_state.current_node = different_node
+
+        # step() may produce inconsistent game state — that's fine for this test
+        try:
+            env.step(action)
+        except Exception:
+            pass
+
+        mock_gr.set_initial_state.assert_called()
+        mock_gr.record_move.assert_not_called()
+    finally:
+        env.close()
