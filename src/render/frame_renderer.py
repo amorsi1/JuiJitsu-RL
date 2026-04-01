@@ -174,6 +174,9 @@ class FrameRenderer:
         self._clock: object | None = None   # pygame.time.Clock
         self._positions: dict[int, list[list[list[float]]]] | None = None
         self._font: object | None = None
+        self._raw_transitions: dict[int, dict] | None = None
+        self._frame_cache: dict[int, dict] = {}
+        self._last_node_id: int | None = None
 
     def _ensure_positions(self) -> None:
         """Load position data on first use."""
@@ -190,6 +193,46 @@ class FrameRenderer:
             pygame.display.set_caption("BJJEnv")
             self._clock = pygame.time.Clock()
             self._font = pygame.font.SysFont("monospace", 14)
+
+    def _ensure_raw_transitions(self) -> None:
+        """Load raw transition index on first use."""
+        if self._raw_transitions is None:
+            from render.position_loader import load_raw_transition_index
+            self._raw_transitions = load_raw_transition_index()
+
+    def _get_transition(self, transition_id: int) -> dict | None:
+        """Get parsed transition data, parsing and caching on first access."""
+        if transition_id in self._frame_cache:
+            return self._frame_cache[transition_id]
+        self._ensure_raw_transitions()
+        raw = self._raw_transitions.get(transition_id)  # type: ignore[union-attr]
+        if raw is None:
+            return None
+        from render.position_loader import parse_transition
+        parsed = parse_transition(raw)
+        self._frame_cache[transition_id] = parsed
+        del self._raw_transitions[transition_id]  # type: ignore[union-attr]
+        return parsed
+
+    @staticmethod
+    def _interpolate_midpoints(
+        frames: list[list[list[list[float]]]]
+    ) -> list[list[list[list[float]]]]:
+        """Insert linearly interpolated midpoints between consecutive frames.
+
+        Used when detailed=False to double frame count for smoother playback.
+        Each frame is 2 players × 23 joints × [x,y,z].
+        """
+        if len(frames) < 2:
+            return frames
+        result: list[list[list[list[float]]]] = []
+        frames_arr = np.array(frames)  # shape: (N, 2, 23, 3)
+        for i in range(len(frames) - 1):
+            result.append(frames[i])
+            mid = ((frames_arr[i] + frames_arr[i + 1]) / 2.0).tolist()
+            result.append(mid)
+        result.append(frames[-1])
+        return result
 
     def _project_joints(
         self, players: list[list[list[float]]]
