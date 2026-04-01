@@ -2,13 +2,14 @@
 
 Draws a directed graph of positions visited during gameplay, with nodes
 representing BJJ positions and directed edges showing transitions colored
-by which player made the move.
+by which player made the move. Structural edges from the source graph are
+shown as dim background lines for context.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import networkx as nx
 import numpy as np
@@ -21,6 +22,7 @@ from render.frame_renderer import BG_COLOR, PLAYER_COLORS, TEXT_COLOR
 
 GREY: tuple[int, int, int] = (150, 150, 150)
 NODE_FILL: tuple[int, int, int] = (40, 40, 60)
+STRUCTURAL_EDGE_COLOR: tuple[int, int, int] = (55, 60, 80)
 
 # Node sizing
 NORMAL_RADIUS: int = 28
@@ -35,6 +37,13 @@ EDGE_WIDTH: int = 2
 # Layout margins
 MARGIN_X: int = 60
 MARGIN_TOP: int = 40
+
+# Animation
+ANIM_FRAMES: int = 12
+ANIM_FPS: int = 24
+
+# Placement distance (in layout-space units) for new nodes from their parent
+PLACEMENT_DISTANCE: float = 0.4
 
 
 # ---------------------------------------------------------------------------
@@ -76,18 +85,32 @@ class VisibleEdge:
 
 class GraphRenderer:
 
-    def __init__(self, width: int = 800, height: int = 600, window_size: int = 10) -> None:
+    def __init__(
+        self,
+        width: int = 800,
+        height: int = 600,
+        window_size: int = 10,
+        source_graph: nx.DiGraph | None = None,
+    ) -> None:
         self._width = width
         self._height = height
         self._window_size = window_size
+        self._source_graph = source_graph
 
         self._visible_nodes: dict[int, VisibleNode] = {}
         self._visible_edges: list[VisibleEdge] = []
         self._current_node: int | None = None
 
-        # Layout caching
+        # Layout: positions in abstract space, pinned once placed
         self._layout: dict[int, tuple[float, float]] = {}
         self._layout_dirty: bool = True
+
+        # Viewport bounds (only grows; reset on prune or episode reset)
+        self._viewport: tuple[float, float, float, float] | None = None
+
+        # Animation: node_id -> progress [0.0, 1.0]
+        self._anim_progress: dict[int, float] = {}
+        self._anim_parent: dict[int, int] = {}  # animating node -> parent node
 
         # Pygame resources (lazy init)
         self._screen: object | None = None
@@ -105,6 +128,9 @@ class GraphRenderer:
         self._layout.clear()
         self._current_node = node_id
         self._layout_dirty = True
+        self._viewport = None
+        self._anim_progress.clear()
+        self._anim_parent.clear()
 
         self._visible_nodes[node_id] = VisibleNode(
             node_id=node_id,
@@ -115,12 +141,9 @@ class GraphRenderer:
         )
 
     def record_move(self, move: MoveRecord) -> None:
-        # Update or create to_node
-        if move.to_node in self._visible_nodes:
-            vn = self._visible_nodes[move.to_node]
-            vn.last_seen_turn = move.turn
-            vn.p1_is_top = move.p1_is_top
-        else:
+        is_new_node = move.to_node not in self._visible_nodes
+
+        if is_new_node:
             self._visible_nodes[move.to_node] = VisibleNode(
                 node_id=move.to_node,
                 description=move.description or str(move.to_node),
@@ -128,13 +151,14 @@ class GraphRenderer:
                 first_seen_turn=move.turn,
                 last_seen_turn=move.turn,
             )
-            # Seed new node position near parent in cached layout
-            if move.from_node in self._layout:
-                px, py = self._layout[move.from_node]
-                jitter_x = (np.random.random() - 0.5) * 0.2
-                jitter_y = (np.random.random() - 0.5) * 0.2
-                self._layout[move.to_node] = (px + jitter_x, py + jitter_y)
+            # Start entrance animation
+            self._anim_progress[move.to_node] = 0.0
+            self._anim_parent[move.to_node] = move.from_node
             self._layout_dirty = True
+        else:
+            vn = self._visible_nodes[move.to_node]
+            vn.last_seen_turn = move.turn
+            vn.p1_is_top = move.p1_is_top
 
         self._visible_edges.append(VisibleEdge(
             from_node=move.from_node,
@@ -153,18 +177,44 @@ class GraphRenderer:
     ) -> np.ndarray | None:
         import pygame
 
+        self._compute_layout()
+
         if render_mode == "human":
             self._ensure_display()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.close()
-                    return None
-            self._draw_graph(self._screen, player_info)
-            pygame.display.flip()
-            self._clock.tick(fps)  # type: ignore[union-attr]
+
+            if self._anim_progress:
+                # Animate new node entrance over ANIM_FRAMES at ANIM_FPS
+                for _ in range(ANIM_FRAMES):
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            self.close()
+                            return None
+                    # Advance animation
+                    finished: list[int] = []
+                    for nid in self._anim_progress:
+                        self._anim_progress[nid] += 1.0 / ANIM_FRAMES
+                        if self._anim_progress[nid] >= 1.0:
+                            finished.append(nid)
+                    for nid in finished:
+                        del self._anim_progress[nid]
+                        self._anim_parent.pop(nid, None)
+                    self._draw_graph(self._screen, player_info)
+                    pygame.display.flip()
+                    self._clock.tick(ANIM_FPS)  # type: ignore[union-attr]
+            else:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.close()
+                        return None
+                self._draw_graph(self._screen, player_info)
+                pygame.display.flip()
+                self._clock.tick(fps)  # type: ignore[union-attr]
+
             return None
 
-        # rgb_array
+        # rgb_array — skip animation, draw final state
+        self._anim_progress.clear()
+        self._anim_parent.clear()
         offscreen = pygame.Surface((self._width, self._height))
         self._draw_graph(offscreen, player_info)
         arr = pygame.surfarray.array3d(offscreen)
@@ -185,8 +235,8 @@ class GraphRenderer:
     # -------------------------------------------------------------------
 
     def _prune_window(self) -> None:
+        pruned = False
         while len(self._visible_nodes) > self._window_size:
-            # Find the node with the oldest first_seen_turn, never prune current
             oldest_id: int | None = None
             oldest_turn: int = float("inf")  # type: ignore[assignment]
             for nid, vn in self._visible_nodes.items():
@@ -199,21 +249,49 @@ class GraphRenderer:
                 break
             del self._visible_nodes[oldest_id]
             self._layout.pop(oldest_id, None)
-            # Remove edges referencing the pruned node
+            self._anim_progress.pop(oldest_id, None)
+            self._anim_parent.pop(oldest_id, None)
             self._visible_edges = [
                 e for e in self._visible_edges
                 if e.from_node != oldest_id and e.to_node != oldest_id
             ]
+            pruned = True
+
+        if pruned:
+            # Recalculate viewport from remaining nodes so it can shrink
+            self._viewport = None
+            self._update_viewport()
             self._layout_dirty = True
 
     # -------------------------------------------------------------------
-    # Internal — layout
+    # Internal — layout (pinned: existing nodes never move)
     # -------------------------------------------------------------------
 
     def _compute_layout(self) -> dict[int, tuple[float, float]]:
         if not self._layout_dirty and self._layout:
             return self._layout
 
+        if not self._visible_nodes:
+            self._layout = {}
+            self._layout_dirty = False
+            return self._layout
+
+        new_nodes = [nid for nid in self._visible_nodes if nid not in self._layout]
+
+        if len(self._visible_nodes) == 1:
+            nid = next(iter(self._visible_nodes))
+            if nid not in self._layout:
+                self._layout[nid] = (0.0, 0.0)
+            self._layout_dirty = False
+            self._update_viewport()
+            return self._layout
+
+        if not new_nodes:
+            # No new nodes — layout is already complete
+            self._layout_dirty = False
+            return self._layout
+
+        # Build subgraph of visible nodes
         g = nx.DiGraph()
         for nid in self._visible_nodes:
             g.add_node(nid)
@@ -221,29 +299,114 @@ class GraphRenderer:
             if edge.from_node in self._visible_nodes and edge.to_node in self._visible_nodes:
                 g.add_edge(edge.from_node, edge.to_node)
 
-        # Seed positions from cache for stable layout
-        pos_seed: dict[int, tuple[float, float]] | None = None
-        if self._layout:
-            pos_seed = {
-                nid: self._layout[nid]
-                for nid in g.nodes
-                if nid in self._layout
-            }
-            if not pos_seed:
-                pos_seed = None
+        # Pin all existing nodes; only new nodes are free to move
+        fixed_nodes = [nid for nid in g.nodes if nid in self._layout and nid not in new_nodes]
+        pos_seed: dict[int, tuple[float, float]] = dict(self._layout)
 
-        if len(g.nodes) == 0:
-            self._layout = {}
-        elif len(g.nodes) == 1:
-            nid = next(iter(g.nodes))
-            self._layout = {nid: (0.0, 0.0)}
+        # Seed new nodes using best-angle placement from their parent
+        for nid in new_nodes:
+            parent = next(
+                (e.from_node for e in self._visible_edges
+                 if e.to_node == nid and e.from_node in pos_seed),
+                None,
+            )
+            if parent is not None:
+                angle = self._best_angle(parent)
+                px, py = pos_seed[parent]
+                pos_seed[nid] = (
+                    px + PLACEMENT_DISTANCE * math.cos(angle),
+                    py + PLACEMENT_DISTANCE * math.sin(angle),
+                )
+            else:
+                pos_seed[nid] = (np.random.uniform(-0.5, 0.5), np.random.uniform(-0.5, 0.5))
+
+        # Run spring layout with existing nodes pinned
+        if fixed_nodes:
+            result = nx.spring_layout(
+                g, pos=pos_seed, fixed=fixed_nodes, seed=42,
+                iterations=50, k=1.5 / math.sqrt(max(len(g.nodes), 2)),
+            )
         else:
-            self._layout = nx.spring_layout(
-                g, pos=pos_seed, seed=42, iterations=50, k=1.5 / math.sqrt(len(g.nodes))
+            result = nx.spring_layout(
+                g, pos=pos_seed, seed=42,
+                iterations=50, k=1.5 / math.sqrt(max(len(g.nodes), 2)),
             )
 
+        # Update layout: keep pinned positions exactly, take new from result
+        for nid in result:
+            if nid in new_nodes:
+                self._layout[nid] = (float(result[nid][0]), float(result[nid][1]))
+            # Pinned nodes keep their existing position (don't overwrite)
+
         self._layout_dirty = False
+        self._update_viewport()
         return self._layout
+
+    def _best_angle(self, parent_id: int) -> float:
+        """Find the angle from parent that maximizes separation from its existing neighbors."""
+        parent_pos = self._layout.get(parent_id)
+        if not parent_pos:
+            return np.random.uniform(0, 2 * math.pi)
+
+        # Collect angles to all laid-out neighbors of the parent
+        neighbor_angles: list[float] = []
+        neighbor_ids = set()
+        for e in self._visible_edges:
+            if e.from_node == parent_id and e.to_node in self._layout:
+                neighbor_ids.add(e.to_node)
+            elif e.to_node == parent_id and e.from_node in self._layout:
+                neighbor_ids.add(e.from_node)
+
+        for nid in neighbor_ids:
+            pos = self._layout[nid]
+            dx = pos[0] - parent_pos[0]
+            dy = pos[1] - parent_pos[1]
+            if abs(dx) > 1e-9 or abs(dy) > 1e-9:
+                neighbor_angles.append(math.atan2(dy, dx))
+
+        if not neighbor_angles:
+            return np.random.uniform(0, 2 * math.pi)
+
+        # Find the largest angular gap and place new node in the middle of it
+        neighbor_angles.sort()
+        best_angle = neighbor_angles[0] + math.pi  # default: opposite of first
+        max_gap = 0.0
+        for i in range(len(neighbor_angles)):
+            next_a = neighbor_angles[(i + 1) % len(neighbor_angles)]
+            cur_a = neighbor_angles[i]
+            gap = (next_a - cur_a) % (2 * math.pi)
+            if gap > max_gap:
+                max_gap = gap
+                best_angle = cur_a + gap / 2
+
+        return best_angle
+
+    # -------------------------------------------------------------------
+    # Internal — viewport
+    # -------------------------------------------------------------------
+
+    def _update_viewport(self) -> None:
+        """Expand viewport to encompass all laid-out positions with padding."""
+        if not self._layout:
+            self._viewport = None
+            return
+
+        xs = [p[0] for p in self._layout.values()]
+        ys = [p[1] for p in self._layout.values()]
+        padding = 0.4
+        new_bounds = (min(xs) - padding, min(ys) - padding,
+                      max(xs) + padding, max(ys) + padding)
+
+        if self._viewport is None:
+            self._viewport = new_bounds
+        else:
+            # Only expand, never shrink (shrinking happens on prune via reset)
+            self._viewport = (
+                min(self._viewport[0], new_bounds[0]),
+                min(self._viewport[1], new_bounds[1]),
+                max(self._viewport[2], new_bounds[2]),
+                max(self._viewport[3], new_bounds[3]),
+            )
 
     # -------------------------------------------------------------------
     # Internal — drawing
@@ -254,10 +417,48 @@ class GraphRenderer:
             import pygame
             pygame.init()
             self._screen = pygame.display.set_mode((self._width, self._height))
-            pygame.display.set_caption("BJJEnv — Graph View")
+            pygame.display.set_caption("BJJEnv \u2014 Graph View")
             self._clock = pygame.time.Clock()
             self._font = pygame.font.SysFont("monospace", 14)
             self._small_font = pygame.font.SysFont("monospace", 9)
+
+    def _ensure_fonts(self) -> None:
+        import pygame
+        if self._font is None:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            self._font = pygame.font.SysFont("monospace", 14)
+        if self._small_font is None:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            self._small_font = pygame.font.SysFont("monospace", 9)
+
+    def _layout_to_screen(
+        self, layout: dict[int, tuple[float, float]]
+    ) -> dict[int, tuple[int, int]]:
+        """Map layout coordinates to screen pixels using a stable viewport."""
+        if not layout or self._viewport is None:
+            return {}
+
+        vp_min_x, vp_min_y, vp_max_x, vp_max_y = self._viewport
+        vp_w = vp_max_x - vp_min_x or 1.0
+        vp_h = vp_max_y - vp_min_y or 1.0
+
+        draw_w = self._width - 2 * MARGIN_X
+        draw_h = self._height - MARGIN_TOP - MARGIN_X
+
+        # Uniform scale preserves aspect ratio
+        scale = min(draw_w / vp_w, draw_h / vp_h)
+        offset_x = MARGIN_X + (draw_w - vp_w * scale) / 2
+        offset_y = MARGIN_TOP + (draw_h - vp_h * scale) / 2
+
+        screen_pos: dict[int, tuple[int, int]] = {}
+        for nid, (lx, ly) in layout.items():
+            sx = int(offset_x + (lx - vp_min_x) * scale)
+            sy = int(offset_y + (ly - vp_min_y) * scale)
+            screen_pos[nid] = (sx, sy)
+
+        return screen_pos
 
     def _draw_graph(
         self,
@@ -273,81 +474,113 @@ class GraphRenderer:
             self._draw_overlay(surface, player_info)
             return
 
-        # Ensure fonts are initialized
-        if self._font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
-            self._font = pygame.font.SysFont("monospace", 14)
-        if self._small_font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
-            self._small_font = pygame.font.SysFont("monospace", 9)
+        self._ensure_fonts()
 
-        # Map layout coordinates [-1, 1] to screen pixels with margins
         screen_pos = self._layout_to_screen(layout)
+        if not screen_pos:
+            self._draw_overlay(surface, player_info)
+            return
 
-        # Draw edges first (below nodes)
+        # Compute effective positions (with animation interpolation)
+        effective_pos = self._effective_positions(screen_pos)
+
+        # 1. Structural edges (dim, underneath everything)
+        self._draw_structural_edges(surface, effective_pos)
+
+        # 2. Traversal edges (arrows)
         for edge in self._visible_edges:
-            if edge.from_node in screen_pos and edge.to_node in screen_pos:
+            if edge.from_node in effective_pos and edge.to_node in effective_pos:
                 color = PLAYER_COLORS[edge.mover]
-                start = screen_pos[edge.from_node]
-                end = screen_pos[edge.to_node]
-                from_radius = CURRENT_RADIUS if edge.from_node == self._current_node else NORMAL_RADIUS
-                to_radius = CURRENT_RADIUS if edge.to_node == self._current_node else NORMAL_RADIUS
-                self._draw_arrow(surface, start, end, color, from_radius, to_radius)
+                start = effective_pos[edge.from_node]
+                end = effective_pos[edge.to_node]
+                from_r = CURRENT_RADIUS if edge.from_node == self._current_node else NORMAL_RADIUS
+                to_r = CURRENT_RADIUS if edge.to_node == self._current_node else NORMAL_RADIUS
+                # Scale target radius for animating nodes
+                if edge.to_node in self._anim_progress:
+                    t = _ease_out(self._anim_progress[edge.to_node])
+                    to_r = max(4, int(to_r * t))
+                self._draw_arrow(surface, start, end, color, from_r, to_r)
 
-        # Draw nodes on top
+        # 3. Nodes (on top)
         for nid, vn in self._visible_nodes.items():
-            if nid not in screen_pos:
+            if nid not in effective_pos:
                 continue
             is_current = nid == self._current_node
-            radius = CURRENT_RADIUS if is_current else NORMAL_RADIUS
+            full_radius = CURRENT_RADIUS if is_current else NORMAL_RADIUS
             outline_w = CURRENT_OUTLINE if is_current else NORMAL_OUTLINE
-            center = screen_pos[nid]
+            center = effective_pos[nid]
 
-            # Outline color based on top/bottom
+            # Animation scaling
+            if nid in self._anim_progress:
+                t = _ease_out(self._anim_progress[nid])
+                radius = max(4, int(full_radius * t))
+                outline_w = max(1, int(outline_w * t))
+            else:
+                radius = full_radius
+
             outline_color = PLAYER_COLORS[0] if vn.p1_is_top else PLAYER_COLORS[1]
 
-            # Filled circle
             pygame.draw.circle(surface, NODE_FILL, center, radius)
             pygame.draw.circle(surface, outline_color, center, radius, outline_w)
 
-            # Text inside node
-            lines = self._wrap_text(vn.description, max_chars_per_line=12)
-            lines = lines[:3]  # max 3 lines
-            total_h = len(lines) * 11
-            y_start = center[1] - total_h // 2
-            for i, line in enumerate(lines):
-                text_surf = self._small_font.render(line, True, TEXT_COLOR)
-                text_rect = text_surf.get_rect(center=(center[0], y_start + i * 11))
-                surface.blit(text_surf, text_rect)  # type: ignore[union-attr]
+            # Only draw text when animation is mostly complete
+            if nid not in self._anim_progress or self._anim_progress[nid] > 0.6:
+                lines = self._wrap_text(vn.description, max_chars_per_line=12)[:3]
+                total_h = len(lines) * 11
+                y_start = center[1] - total_h // 2
+                for i, line in enumerate(lines):
+                    text_surf = self._small_font.render(line, True, TEXT_COLOR)
+                    text_rect = text_surf.get_rect(center=(center[0], y_start + i * 11))
+                    surface.blit(text_surf, text_rect)  # type: ignore[union-attr]
 
         self._draw_overlay(surface, player_info)
 
-    def _layout_to_screen(
-        self, layout: dict[int, tuple[float, float]]
+    def _effective_positions(
+        self, screen_pos: dict[int, tuple[int, int]]
     ) -> dict[int, tuple[int, int]]:
-        if not layout:
-            return {}
+        """Apply animation interpolation: animating nodes lerp from parent to target."""
+        if not self._anim_progress:
+            return screen_pos
 
-        xs = [p[0] for p in layout.values()]
-        ys = [p[1] for p in layout.values()]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
+        result = dict(screen_pos)
+        for nid, progress in self._anim_progress.items():
+            if nid not in screen_pos:
+                continue
+            parent_id = self._anim_parent.get(nid)
+            if parent_id is None or parent_id not in screen_pos:
+                continue
+            t = _ease_out(progress)
+            ox, oy = screen_pos[parent_id]
+            tx, ty = screen_pos[nid]
+            result[nid] = (int(ox + t * (tx - ox)), int(oy + t * (ty - oy)))
+        return result
 
-        range_x = max_x - min_x or 1.0
-        range_y = max_y - min_y or 1.0
+    def _draw_structural_edges(
+        self, surface: object, screen_pos: dict[int, tuple[int, int]]
+    ) -> None:
+        """Draw dim lines for source-graph edges between visible nodes (not traversed)."""
+        import pygame
 
-        draw_w = self._width - 2 * MARGIN_X
-        draw_h = self._height - MARGIN_TOP - MARGIN_X  # bottom margin same as side
+        if self._source_graph is None:
+            return
 
-        screen_pos: dict[int, tuple[int, int]] = {}
-        for nid, (lx, ly) in layout.items():
-            sx = int(MARGIN_X + (lx - min_x) / range_x * draw_w)
-            sy = int(MARGIN_TOP + (ly - min_y) / range_y * draw_h)
-            screen_pos[nid] = (sx, sy)
+        traversed = {(e.from_node, e.to_node) for e in self._visible_edges}
+        visible_ids = set(self._visible_nodes.keys())
+        drawn: set[tuple[int, int]] = set()
 
-        return screen_pos
+        for nid in visible_ids:
+            if nid not in self._source_graph or nid not in screen_pos:
+                continue
+            for neighbor in self._source_graph.successors(nid):
+                if (neighbor in visible_ids
+                        and neighbor in screen_pos
+                        and (nid, neighbor) not in traversed
+                        and (nid, neighbor) not in drawn):
+                    pygame.draw.line(
+                        surface, STRUCTURAL_EDGE_COLOR,
+                        screen_pos[nid], screen_pos[neighbor], 1,
+                    )
+                    drawn.add((nid, neighbor))
 
     def _draw_arrow(
         self,
@@ -366,35 +599,27 @@ class GraphRenderer:
         if length < 1:
             return
 
-        # Unit direction
         ux = dx / length
         uy = dy / length
 
-        # Shorten both ends by respective node radii
         sx = start[0] + ux * from_radius
         sy = start[1] + uy * from_radius
         ex = end[0] - ux * to_radius
         ey = end[1] - uy * to_radius
 
-        # Check we still have a positive-length line after shortening
-        shortened_dx = ex - sx
-        shortened_dy = ey - sy
-        shortened_len = math.sqrt(shortened_dx * shortened_dx + shortened_dy * shortened_dy)
+        shortened_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
         if shortened_len < 1:
             return
 
         pygame.draw.line(surface, color, (int(sx), int(sy)), (int(ex), int(ey)), EDGE_WIDTH)
 
-        # Arrowhead triangle at target end
-        # Perpendicular direction
-        px = -uy
-        py = ux
-        tip_x, tip_y = ex, ey
+        # Arrowhead triangle
+        px, py = -uy, ux
         base_x = ex - ux * ARROWHEAD_SIZE
         base_y = ey - uy * ARROWHEAD_SIZE
         left = (int(base_x + px * ARROWHEAD_SIZE * 0.5), int(base_y + py * ARROWHEAD_SIZE * 0.5))
         right = (int(base_x - px * ARROWHEAD_SIZE * 0.5), int(base_y - py * ARROWHEAD_SIZE * 0.5))
-        pygame.draw.polygon(surface, color, [(int(tip_x), int(tip_y)), left, right])
+        pygame.draw.polygon(surface, color, [(int(ex), int(ey)), left, right])
 
     def _draw_overlay(
         self,
@@ -403,10 +628,7 @@ class GraphRenderer:
     ) -> None:
         import pygame
 
-        if self._font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
-            self._font = pygame.font.SysFont("monospace", 14)
+        self._ensure_fonts()
 
         if player_info:
             lines = [
@@ -438,3 +660,13 @@ class GraphRenderer:
         if current_line:
             lines.append(current_line)
         return lines
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _ease_out(t: float) -> float:
+    """Quadratic ease-out: starts fast, decelerates to stop."""
+    return 1.0 - (1.0 - min(t, 1.0)) ** 2

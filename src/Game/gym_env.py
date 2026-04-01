@@ -144,7 +144,7 @@ class BJJEnv(gym.Env):
             self.game.switch_players()
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
-        move = (start, self.game.board.get_edge_data(start, end))
+        move = (end, self.game.board.get_edge_data(start, end))
 
         # Record move for graph renderer before play_turn mutates state
         if self.render_mode == "graph":
@@ -213,7 +213,7 @@ class BJJEnv(gym.Env):
     def _ensure_graph_renderer(self) -> None:
         if self._graph_renderer is None:
             from render.graph_renderer import GraphRenderer
-            self._graph_renderer = GraphRenderer()
+            self._graph_renderer = GraphRenderer(source_graph=self.G)
 
     def _get_player_info(self) -> dict[str, object]:
         """Build display-info dict for the renderer overlay text."""
