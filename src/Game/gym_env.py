@@ -153,21 +153,29 @@ class BJJEnv(gym.Env):
         if self.render_mode == "graph":
             self._ensure_graph_renderer()
             from render.graph_renderer import MoveRecord
-            from_node = self.game.game_state.current_node
+            current_node = self.game.game_state.current_node
             mover = 0 if self.game.current_player is self.game.player1 else 1
             swaps = move[1].get('swaps_players', False)
             p1_is_top_after = self.game.player1.is_top
             if swaps:
                 p1_is_top_after = not p1_is_top_after
             node_data = self.game.game_state.board.get_node_data(end)
-            self._graph_renderer.record_move(MoveRecord(
-                from_node=from_node,
-                to_node=end,
-                mover=mover,
-                p1_is_top=p1_is_top_after,
-                turn=self.game.turn_count + 1,
-                description=node_data.get("description", str(end)),
-            ))
+            if start != current_node:
+                # Teleport: chosen edge originates from a different node — reset view.
+                self._graph_renderer.set_initial_state(
+                    node_id=end,
+                    description=node_data.get("description", str(end)),
+                    p1_is_top=p1_is_top_after,
+                )
+            else:
+                self._graph_renderer.record_move(MoveRecord(
+                    from_node=current_node,
+                    to_node=end,
+                    mover=mover,
+                    p1_is_top=p1_is_top_after,
+                    turn=self.game.turn_count + 1,
+                    description=node_data.get("description", str(end)),
+                ))
 
         self.game.play_turn(move)
         self.game.turn_count += 1
