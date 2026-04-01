@@ -9,7 +9,18 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from render.graph_renderer import GraphRenderer, MoveRecord, VisibleEdge, VisibleNode
+import math
+
+import networkx as nx
+
+from render.graph_renderer import (
+    MIN_NODE_SEP,
+    GraphRenderer,
+    MoveRecord,
+    VisibleEdge,
+    VisibleNode,
+    _compute_terminal_distances,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -267,3 +278,81 @@ def test_close_idempotent() -> None:
     renderer = GraphRenderer()
     renderer.close()
     renderer.close()
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical layout — terminal distance computation
+# ---------------------------------------------------------------------------
+
+
+def test_terminal_distance_computation() -> None:
+    """BFS from terminal correctly assigns distances on a linear chain."""
+    g: nx.DiGraph = nx.DiGraph()
+    g.add_edges_from([(0, 1), (1, 2), (2, 3)])
+    # Node 3 has zero out-edges → terminal at distance 0
+    distances, max_dist = _compute_terminal_distances(g)
+
+    assert distances[3] == 0
+    assert distances[2] == 1
+    assert distances[1] == 2
+    assert distances[0] == 3
+    assert max_dist == 3
+
+
+def test_hierarchical_y_placement() -> None:
+    """Nodes closer to terminal get a higher (less-negative) Y value."""
+    g: nx.DiGraph = nx.DiGraph()
+    g.add_edges_from([(0, 1), (1, 2)])
+    # Node 2 is terminal (distance 0), node 1 is distance 1, node 0 is distance 2
+
+    renderer = GraphRenderer(source_graph=g)
+    renderer.set_initial_state(node_id=0, description="n0", p1_is_top=True)
+    renderer.record_move(MoveRecord(from_node=0, to_node=1, mover=0, p1_is_top=True, turn=1))
+    renderer.record_move(MoveRecord(from_node=1, to_node=2, mover=1, p1_is_top=False, turn=2))
+    renderer._compute_layout()
+
+    y0 = renderer._layout[0][1]
+    y1 = renderer._layout[1][1]
+    y2 = renderer._layout[2][1]
+    # Closer to terminal → less negative Y (higher value on screen = lower position)
+    assert y2 >= y1 >= y0, f"Expected y2({y2}) >= y1({y1}) >= y0({y0})"
+
+
+def test_minimum_node_separation() -> None:
+    """After several moves, all node pairs satisfy the MIN_NODE_SEP distance."""
+    g: nx.DiGraph = nx.DiGraph()
+    g.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
+
+    renderer = GraphRenderer(source_graph=g)
+    renderer.set_initial_state(node_id=0, description="n0", p1_is_top=True)
+    for i, (frm, to) in enumerate([(0, 1), (1, 2), (2, 3), (3, 4)], start=1):
+        renderer.record_move(MoveRecord(from_node=frm, to_node=to, mover=i % 2,
+                                        p1_is_top=True, turn=i))
+    renderer._compute_layout()
+
+    positions = list(renderer._layout.values())
+    tolerance = 0.9  # allow 10% slack for floating-point edge cases
+    for i in range(len(positions)):
+        for j in range(i + 1, len(positions)):
+            xi, yi = positions[i]
+            xj, yj = positions[j]
+            dist = math.sqrt((xi - xj) ** 2 + (yi - yj) ** 2)
+            assert dist >= MIN_NODE_SEP * tolerance, (
+                f"Nodes {i} and {j} too close: {dist:.4f} < {MIN_NODE_SEP * tolerance:.4f}"
+            )
+
+
+def test_nodes_not_collinear() -> None:
+    """A chain of moves produces some horizontal spread — nodes are not all stacked on one X."""
+    g: nx.DiGraph = nx.DiGraph()
+    g.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
+
+    renderer = GraphRenderer(source_graph=g)
+    renderer.set_initial_state(node_id=0, description="n0", p1_is_top=True)
+    for i, (frm, to) in enumerate([(0, 1), (1, 2), (2, 3), (3, 4)], start=1):
+        renderer.record_move(MoveRecord(from_node=frm, to_node=to, mover=i % 2,
+                                        p1_is_top=True, turn=i))
+    renderer._compute_layout()
+
+    unique_x = {round(pos[0], 2) for pos in renderer._layout.values()}
+    assert len(unique_x) > 1, "All nodes share the same X — layout is fully collinear"
