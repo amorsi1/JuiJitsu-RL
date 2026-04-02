@@ -227,6 +227,16 @@ def draw_hud_overlay(
     info_y = score_y + th_large + 3
     _blit_outlined(f"{description}", TEXT_COLOR, font_medium, HUD_MARGIN, info_y)
 
+    # Row 4 — point flash messages (temporary, keyed off p1_flash / p2_flash)
+    flash_y = info_y + 20
+    p1_flash = player_info.get("p1_flash")
+    if p1_flash:
+        _blit_outlined(str(p1_flash), PLAYER_COLORS[0], font_medium, HUD_MARGIN, flash_y)
+    p2_flash = player_info.get("p2_flash")
+    if p2_flash:
+        _blit_outlined(str(p2_flash), PLAYER_COLORS[1], font_medium,
+                       width - HUD_MARGIN, flash_y, right_align=True)
+
 
 # ---------------------------------------------------------------------------
 # Z-depth shading
