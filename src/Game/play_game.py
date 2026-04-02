@@ -45,9 +45,8 @@ class GameState:
             self.current_node = 94
             return
 
-        # Maintain original probability: 50% node 94, 50% random valid node
-        # self.current_node = random.choice([94, random.choice(valid_nodes)])
-        self.current_node = 94
+        # 50% node 94 (symmetric staggered standing), 50% random valid node
+        self.current_node = random.choice([94, random.choice(valid_nodes)])
 
     def update(self, new_node: int):
         print(f"moving to position {self.board.get_node_data(new_node)['description']}")
