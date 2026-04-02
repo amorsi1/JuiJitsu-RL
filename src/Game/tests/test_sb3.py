@@ -11,6 +11,7 @@ import pytest
 import Game  # noqa: F401 — side-effect import: triggers gymnasium registration
 from Game.gym_env import BJJEnv
 from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from sb3_contrib.common.maskable.evaluation import evaluate_policy
 from sb3_contrib.common.maskable.utils import get_action_masks
 
@@ -153,3 +154,130 @@ def test_model_save_load_roundtrip(
     assert masks[int(loaded_action)], (
         f"Loaded model predicted masked action {int(loaded_action)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Terminal info contains BJJ metrics
+# ---------------------------------------------------------------------------
+
+
+def test_terminal_info_contains_bjj_metrics(env: BJJEnv) -> None:
+    """On episode termination/truncation, info must contain is_win, is_loss, point_diff."""
+    obs, _ = env.reset()
+    terminated = truncated = False
+    terminal_info: dict | None = None
+
+    while not (terminated or truncated):
+        masks = env.action_masks()
+        legal_actions = np.where(masks)[0]
+        action = int(np.random.choice(legal_actions))
+        obs, _reward, terminated, truncated, info = env.step(action)
+        if terminated or truncated:
+            terminal_info = info
+
+    assert terminal_info is not None, "Episode never reached a terminal state"
+    assert "is_win" in terminal_info, "info missing 'is_win' key at termination"
+    assert "is_loss" in terminal_info, "info missing 'is_loss' key at termination"
+    assert "point_diff" in terminal_info, "info missing 'point_diff' key at termination"
+    assert isinstance(terminal_info["is_win"], bool), (
+        f"Expected bool for is_win, got {type(terminal_info['is_win']).__name__}"
+    )
+    assert isinstance(terminal_info["is_loss"], bool), (
+        f"Expected bool for is_loss, got {type(terminal_info['is_loss']).__name__}"
+    )
+    assert isinstance(terminal_info["point_diff"], float), (
+        f"Expected float for point_diff, got {type(terminal_info['point_diff']).__name__}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7. MaskableEvalCallback instantiation
+# ---------------------------------------------------------------------------
+
+
+def test_maskable_eval_callback_instantiation() -> None:
+    """MaskableEvalCallback must instantiate without error."""
+    eval_env = BJJEnv()
+    callback = MaskableEvalCallback(
+        eval_env=eval_env,
+        eval_freq=1000,
+        n_eval_episodes=3,
+        use_masking=True,
+        verbose=0,
+    )
+    assert callback is not None
+
+
+# ---------------------------------------------------------------------------
+# 8. BJJMetricsCallback extracts and clears metrics on rollout end
+# ---------------------------------------------------------------------------
+
+
+def test_bjj_metrics_callback_extracts_metrics() -> None:
+    """BJJMetricsCallback must accumulate terminal infos and clear buffers on rollout end."""
+    from Game.train_sb3 import BJJMetricsCallback
+
+    callback = BJJMetricsCallback()
+
+    # Provide a minimal model so init_callback succeeds
+    model = MaskablePPO("MlpPolicy", BJJEnv(), verbose=0)
+    callback.init_callback(model)
+
+    # Simulate three SB3 _on_step() calls — two terminal, one non-terminal
+    terminal_infos = [
+        {"is_win": True, "is_loss": False, "point_diff": 5.0},
+        {"is_win": False, "is_loss": True, "point_diff": -3.0},
+        {},  # non-terminal step — no BJJ keys
+    ]
+    for info in terminal_infos:
+        callback.locals = {"infos": [info]}
+        callback._on_step()
+
+    # Before rollout end: 2 terminal episodes accumulated
+    assert len(callback._win_buffer) == 2, (
+        f"Expected 2 entries in win buffer before rollout end, got {len(callback._win_buffer)}"
+    )
+    assert list(callback._win_buffer) == [True, False], (
+        f"Unexpected win buffer contents: {list(callback._win_buffer)}"
+    )
+    assert len(callback._point_diff_buffer) == 2, (
+        f"Expected 2 entries in point_diff buffer before rollout end, "
+        f"got {len(callback._point_diff_buffer)}"
+    )
+    assert list(callback._point_diff_buffer) == [5.0, -3.0], (
+        f"Unexpected point_diff buffer contents: {list(callback._point_diff_buffer)}"
+    )
+
+    # After rollout end: buffers must be cleared
+    callback._on_rollout_end()
+    assert len(callback._win_buffer) == 0, (
+        f"Expected empty win buffer after rollout end, got {len(callback._win_buffer)}"
+    )
+    assert len(callback._point_diff_buffer) == 0, (
+        f"Expected empty point_diff buffer after rollout end, "
+        f"got {len(callback._point_diff_buffer)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. train() smoke test with callbacks
+# ---------------------------------------------------------------------------
+
+
+def test_train_with_callbacks(tmp_path: pytest.TempPathFactory) -> None:
+    """train() with callback parameters must complete and save a model file."""
+    from Game.train_sb3 import train
+
+    model = train(
+        total_timesteps=512,
+        save_path=tmp_path / "model",
+        tensorboard_log=tmp_path / "logs",
+        eval_freq=256,
+        n_eval_episodes=2,
+        checkpoint_freq=256,
+        checkpoint_dir=tmp_path / "checkpoints",
+        best_model_dir=tmp_path / "best_model",
+        verbose=0,
+    )
+    assert model is not None
+    assert (tmp_path / "model.zip").exists()
