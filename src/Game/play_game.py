@@ -46,10 +46,8 @@ class GameState:
             return
 
         # Maintain original probability: 50% node 94, 50% random valid node
-        if random.random() < 0.5 and 94 in valid_nodes:
-            self.current_node = 94
-        else:
-            self.current_node = random.choice(valid_nodes)
+        # self.current_node = random.choice([94, random.choice(valid_nodes)])
+        self.current_node = 94
 
     def update(self, new_node: int):
         print(f"moving to position {self.board.get_node_data(new_node)['description']}")
@@ -175,7 +173,7 @@ class Game:
         self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
         self.player2.is_top, self.player2.is_bottom = cache
 
-    def play_turn(self, chosen_move: Tuple[int, Dict]=None) -> bool:
+    def play_turn(self, chosen_move: Tuple[int, Dict] = None) -> bool:
         if chosen_move:
             move = chosen_move
         else:
@@ -321,13 +319,15 @@ class Simulation:
         self.games = []
         self.results = []
 
-# Single game example
-game = Game("BJJ Simulation")
-game.initialize_game("Player 1", "Player 2")
-game.play_game()
 
-# Parallel multi-threaded example
-# simulation = Simulation(num_games=100)
-# simulation.initialize_games()
-# simulation.run_games(max_turns=200)
-# simulation.agg_results()
+if __name__ == "__main__":
+    # Single game example
+    game = Game("BJJ Simulation")
+    game.initialize_game("Player 1", "Player 2")
+    game.play_game()
+
+    # Parallel multi-threaded example
+    # simulation = Simulation(num_games=100)
+    # simulation.initialize_games()
+    # simulation.run_games(max_turns=200)
+    # simulation.agg_results()
