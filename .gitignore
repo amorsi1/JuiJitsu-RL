@@ -13,3 +13,7 @@ dist/
 
 # let the LLM track its notes
 !.claude/
+
+# Training artifacts
+models/
+logs/
