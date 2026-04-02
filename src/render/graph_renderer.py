@@ -14,7 +14,15 @@ from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 
-from render.frame_renderer import BG_COLOR, PLAYER_COLORS, TEXT_COLOR
+from render.frame_renderer import (
+    BG_COLOR,
+    HUD_LARGE_FONT_SIZE,
+    HUD_MEDIUM_FONT_SIZE,
+    HUD_TOP_RESERVE,
+    PLAYER_COLORS,
+    TEXT_COLOR,
+    draw_hud_overlay,
+)
 
 # ---------------------------------------------------------------------------
 # Graph-specific colors
@@ -36,7 +44,7 @@ EDGE_WIDTH: int = 2
 
 # Layout margins
 MARGIN_X: int = 60
-MARGIN_TOP: int = 40
+MARGIN_TOP: int = HUD_TOP_RESERVE  # keep in sync with frame_renderer.HUD_TOP_RESERVE
 
 # Animation
 ANIM_FRAMES: int = 12
@@ -180,6 +188,8 @@ class GraphRenderer:
         self._screen: object | None = None
         self._clock: object | None = None
         self._font: object | None = None
+        self._font_large: object | None = None
+        self._font_medium: object | None = None
         self._small_font: object | None = None
 
     # -------------------------------------------------------------------
@@ -292,6 +302,8 @@ class GraphRenderer:
             self._screen = None
             self._clock = None
             self._font = None
+            self._font_large = None
+            self._font_medium = None
             self._small_font = None
 
     # -------------------------------------------------------------------
@@ -440,19 +452,20 @@ class GraphRenderer:
             self._screen = pygame.display.set_mode((self._width, self._height))
             pygame.display.set_caption("BJJEnv \u2014 Graph View")
             self._clock = pygame.time.Clock()
-            self._font = pygame.font.SysFont("monospace", 14)
-            self._small_font = pygame.font.SysFont("monospace", 9)
+            self._ensure_fonts()
 
     def _ensure_fonts(self) -> None:
         import pygame
+        if not pygame.font.get_init():
+            pygame.font.init()
         if self._font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
             self._font = pygame.font.SysFont("monospace", 14)
         if self._small_font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
             self._small_font = pygame.font.SysFont("monospace", 9)
+        if self._font_large is None:
+            self._font_large = pygame.font.SysFont("monospace", HUD_LARGE_FONT_SIZE, bold=True)
+        if self._font_medium is None:
+            self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
 
     def _layout_to_screen(
         self, layout: dict[int, tuple[float, float]]
@@ -647,23 +660,18 @@ class GraphRenderer:
         surface: object,
         player_info: dict[str, object] | None,
     ) -> None:
-        import pygame
-
         self._ensure_fonts()
 
         if player_info:
-            lines = [
-                f"Position: {player_info.get('description', '?')}",
-                f"P1: {player_info.get('p1_points', 0)} pts  "
-                f"P2: {player_info.get('p2_points', 0)} pts  "
-                f"Turn: {player_info.get('turn', '?')}",
-            ]
+            draw_hud_overlay(
+                surface, player_info, self._width, self._font_large, self._font_medium,
+            )
         else:
-            lines = [f"Node: {self._current_node}"]
-
-        for i, line in enumerate(lines):
-            text_surf = self._font.render(line, True, TEXT_COLOR)
-            surface.blit(text_surf, (8, 4 + i * 16))  # type: ignore[union-attr]
+            import pygame
+            text_surf = self._font.render(  # type: ignore[union-attr]
+                f"Node: {self._current_node}", True, TEXT_COLOR,
+            )
+            surface.blit(text_surf, (8, 4))  # type: ignore[union-attr]
 
     @staticmethod
     def _wrap_text(text: str, max_chars_per_line: int = 12) -> list[str]:

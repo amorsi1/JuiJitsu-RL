@@ -127,6 +127,90 @@ BG_COLOR: tuple[int, int, int] = (25, 25, 45)
 TEXT_COLOR: tuple[int, int, int] = (200, 200, 200)
 
 # ---------------------------------------------------------------------------
+# HUD overlay constants
+# ---------------------------------------------------------------------------
+
+HUD_LARGE_FONT_SIZE: int = 36
+HUD_MEDIUM_FONT_SIZE: int = 15
+HUD_MARGIN: int = 8
+HUD_BG_COLOR: tuple[int, int, int] = (0, 0, 0)
+HUD_BG_PADDING: int = 3
+# Pixels reserved at the top of the frame for the HUD; keep in sync with
+# layout offsets in _project_joints and graph_renderer.MARGIN_TOP.
+HUD_TOP_RESERVE: int = 80
+
+# ---------------------------------------------------------------------------
+# HUD overlay
+# ---------------------------------------------------------------------------
+
+
+def draw_hud_overlay(
+    surface: object,
+    player_info: dict[str, object] | None,
+    width: int,
+    font_large: object,
+    font_medium: object,
+) -> None:
+    """Draw the scoreboard HUD onto *surface*.
+
+    Layout:
+    - Top-left:  P1 points in large bold red, with black background rect.
+    - Top-right: P2 points in large bold blue, with black background rect.
+    - Below P1:  current position name and turn counter in medium text.
+
+    Args:
+        surface: pygame Surface to draw onto.
+        player_info: Dict with keys 'p1_points', 'p2_points', 'description', 'turn'.
+        width: Surface pixel width (used to right-align P2 score).
+        font_large: Initialised pygame Font for large player scores.
+        font_medium: Initialised pygame Font for position/turn info.
+    """
+    import pygame
+
+    if not player_info:
+        return
+
+    p1_pts = player_info.get("p1_points", 0)
+    p2_pts = player_info.get("p2_points", 0)
+    description = str(player_info.get("description", ""))
+    turn = player_info.get("turn", "?")
+
+    def _blit_with_bg(
+        text: str,
+        color: tuple[int, int, int],
+        font: object,
+        x: int,
+        y: int,
+        right_align: bool = False,
+    ) -> int:
+        text_surf = font.render(text, True, color)  # type: ignore[union-attr]
+        tw, th = text_surf.get_size()
+        rx = x - tw if right_align else x
+        bg = pygame.Rect(
+            rx - HUD_BG_PADDING, y - HUD_BG_PADDING,
+            tw + 2 * HUD_BG_PADDING, th + 2 * HUD_BG_PADDING,
+        )
+        pygame.draw.rect(surface, HUD_BG_COLOR, bg)  # type: ignore[union-attr]
+        surface.blit(text_surf, (rx, y))  # type: ignore[union-attr]
+        return th
+
+    # Large player scores
+    th_large = _blit_with_bg(
+        f"P1: {p1_pts}", PLAYER_COLORS[0], font_large, HUD_MARGIN, HUD_MARGIN,
+    )
+    _blit_with_bg(
+        f"P2: {p2_pts}", PLAYER_COLORS[1], font_large,
+        width - HUD_MARGIN, HUD_MARGIN, right_align=True,
+    )
+
+    # Medium position + turn info below P1 score
+    info_y = HUD_MARGIN + th_large + HUD_BG_PADDING * 2 + 2
+    _blit_with_bg(
+        f"{description}  |  Turn {turn}", TEXT_COLOR, font_medium, HUD_MARGIN, info_y,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Z-depth shading
 # ---------------------------------------------------------------------------
 
@@ -174,6 +258,8 @@ class FrameRenderer:
         self._clock: object | None = None   # pygame.time.Clock
         self._positions: dict[int, list[list[list[float]]]] | None = None
         self._font: object | None = None
+        self._font_large: object | None = None
+        self._font_medium: object | None = None
         self._raw_transitions: dict[int, dict] | None = None
         self._frame_cache: dict[int, dict] = {}
         self._last_node_id: int | None = None
@@ -184,6 +270,18 @@ class FrameRenderer:
             from render.position_loader import load_positions
             self._positions = load_positions()
 
+    def _ensure_fonts(self) -> None:
+        """Initialize all fonts (safe to call before display is up, e.g. rgb_array mode)."""
+        import pygame
+        if not pygame.font.get_init():
+            pygame.font.init()
+        if self._font is None:
+            self._font = pygame.font.SysFont("monospace", 14)
+        if self._font_large is None:
+            self._font_large = pygame.font.SysFont("monospace", HUD_LARGE_FONT_SIZE, bold=True)
+        if self._font_medium is None:
+            self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
+
     def _ensure_display(self) -> None:
         """Initialize pygame display for human mode."""
         if self._screen is None:
@@ -192,7 +290,7 @@ class FrameRenderer:
             self._screen = pygame.display.set_mode((self._width, self._height))
             pygame.display.set_caption("BJJEnv")
             self._clock = pygame.time.Clock()
-            self._font = pygame.font.SysFont("monospace", 14)
+            self._ensure_fonts()
 
     def _ensure_raw_transitions(self) -> None:
         """Load raw transition index on first use."""
@@ -257,12 +355,12 @@ class FrameRenderer:
         range_y = max_y - min_y or 1.0
 
         draw_w = self._width - 2 * margin
-        draw_h = self._height - 2 * margin - 30  # reserve top for text
+        draw_h = self._height - 2 * margin - HUD_TOP_RESERVE
 
         scale = min(draw_w / range_x, draw_h / range_y)
 
         cx = margin + (draw_w - range_x * scale) / 2
-        cy = margin + 30 + (draw_h - range_y * scale) / 2
+        cy = margin + HUD_TOP_RESERVE + (draw_h - range_y * scale) / 2
 
         screen_coords: list[list[tuple[int, int]]] = []
         z_values: list[list[float]] = []
@@ -342,22 +440,11 @@ class FrameRenderer:
         for _, draw_fn in draw_cmds:
             draw_fn()
 
-        # Overlay text (always on top)
-        if self._font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
-            self._font = pygame.font.SysFont("monospace", 14)
-
-        if player_info:
-            lines = [
-                f"Position: {player_info.get('description', '')}",
-                f"P1: {player_info.get('p1_points', 0)} pts  "
-                f"P2: {player_info.get('p2_points', 0)} pts  "
-                f"Turn: {player_info.get('turn', '?')}",
-            ]
-            for i, line in enumerate(lines):
-                text_surf = self._font.render(line, True, TEXT_COLOR)
-                surface.blit(text_surf, (8, 4 + i * 16))  # type: ignore[union-attr]
+        # HUD overlay (always on top)
+        self._ensure_fonts()
+        draw_hud_overlay(
+            surface, player_info, self._width, self._font_large, self._font_medium,
+        )
 
     def _draw_frame(
         self,
@@ -473,3 +560,5 @@ class FrameRenderer:
             self._screen = None
             self._clock = None
             self._font = None
+            self._font_large = None
+            self._font_medium = None
