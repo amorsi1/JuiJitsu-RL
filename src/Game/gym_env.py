@@ -107,35 +107,6 @@ class BJJEnv(gym.Env):
             mask[self.id_to_index[edge_id]] = 1
         return mask
 
-    def _resolve_no_valid_moves(self) -> None:
-        """Ensure the current player has at least one valid move.
-
-        After play_turn() switches players, the new current player may have no
-        legal moves from the current position (e.g. all outgoing edges require
-        the opposite top/bottom role, or the node is a dead-end).  The standalone
-        Game.play_turn() handles this internally, but that logic is bypassed when
-        a chosen_move is provided (the gym-env path).
-
-        This mirrors the two cases from Game.play_turn():
-        1. Dead-end node (no outgoing edges at all): reinitialize position.
-        2. Edges exist but none valid for the current player: skip their turn
-           by switching players.
-        """
-        for _ in range(50):  # safety bound
-            if self.game.winner is not None:
-                return
-            node = self.game.game_state.current_node
-            if not self.game.game_state.board.get_outgoing_edges(node):
-                self.game.game_state.initialize()
-                continue
-            possible = self.game.game_state.get_possible_moves(
-                self.game.current_player.is_top,
-                self.game.current_player.is_bottom,
-            )
-            if possible:
-                return
-            self.game.switch_players()
-
     def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
         super().reset(seed=seed)  # Seeds self.np_random
@@ -209,12 +180,6 @@ class BJJEnv(gym.Env):
 
         self.game.play_turn(move)
         self.game.turn_count += 1
-
-        # After play_turn switches players, the new current player may have
-        # no valid moves (position mismatch or dead-end node). Mirror the
-        # standalone Game.play_turn() logic (lines 180-191) which handles
-        # this by switching players or reinitializing on dead-ends.
-        self._resolve_no_valid_moves()
 
         # terminated: game ended naturally (submission or position win)
         terminated = self.game.winner is not None

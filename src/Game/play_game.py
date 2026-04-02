@@ -186,8 +186,9 @@ class Game:
                     return self.play_turn()
                 else:
                     print(f"No moves available for {self.current_player.name}. Switching players.")
-                    # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
-                    return self.switch_players()
+                    self.switch_players()
+                    self.ensure_playable_state()
+                    return False
             else:
                 move = self.current_player.choose_move(possible_moves)
         points, player_tapped, swap_players_positions = self.game_state.process_move(move)
@@ -227,11 +228,37 @@ class Game:
         if swap_players_positions:
             self._swap_players_positions()
 
-        return self.switch_players()
+        self.switch_players()
+        self.ensure_playable_state()
+        return False
 
     def switch_players(self) -> bool:
         self.current_player = self.player2 if self.current_player is self.player1 else self.player1
         return False
+
+    def ensure_playable_state(self) -> None:
+        """Ensure the current player has at least one valid move.
+
+        After switching players, the new current player may face a dead-end
+        node (no outgoing edges) or a position where all outgoing edges require
+        the opposite top/bottom role. Resolves by reinitializing on dead-ends
+        and switching players when edges exist but none are valid.
+
+        Since players always have opposite positions, at most one switch is
+        needed for non-dead-end nodes. The bounded loop handles the rare case
+        where reinitializing lands on another dead-end.
+        """
+        for _ in range(10):  # safety bound; should resolve in 1-2 iterations
+            if self.winner is not None:
+                return
+            if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
+                self.game_state.initialize()
+                continue
+            if self.game_state.get_possible_moves(
+                self.current_player.is_top, self.current_player.is_bottom
+            ):
+                return
+            self.switch_players()
 
     def check_for_points_win(self):
         if self.player1.points > self.player2.points:
