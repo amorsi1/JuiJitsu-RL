@@ -148,7 +148,14 @@ class BJJEnv(gym.Env):
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
 
-        return obs, reward, terminated, truncated, {"action_mask": self._get_action_mask()}
+        info: dict[str, Any] = {"action_mask": self._get_action_mask()}
+        if terminated or truncated:
+            current_player = self.game.current_player
+            other_player = self.game.choose_other_player(current_player)
+            info["is_win"] = self.game.winner == current_player
+            info["is_loss"] = self.game.winner == other_player
+            info["point_diff"] = float(current_player.points - other_player.points)
+        return obs, reward, terminated, truncated, info
 
 
     def _calculate_reward(self, obs) -> float:
