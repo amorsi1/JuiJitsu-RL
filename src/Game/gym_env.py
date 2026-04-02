@@ -4,6 +4,9 @@ import numpy as np
 from .play_game import Game, Board, GameState, Player, tqdm
 from typing import List, Tuple, Dict, Optional, Any
 import random
+import time
+
+POINT_FLASH_DURATION: float = 2.0
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
 class BJJEnv(gym.Env):
@@ -14,6 +17,8 @@ class BJJEnv(gym.Env):
         self._renderer: object | None = None  # lazy FrameRenderer
         self._graph_renderer: object | None = None  # lazy GraphRenderer
         self._pending_transition_id: int | None = None
+        self._point_flash_p1: tuple[str, float] | None = None  # (message, timestamp)
+        self._point_flash_p2: tuple[str, float] | None = None
 
         self.game = Game("BJJ Match")
         self.game.initialize_game("Player1", "Player2")
@@ -124,6 +129,8 @@ class BJJEnv(gym.Env):
             # Reinitialize if there are no valid moves for the starting position
             self.game.initialize_game("Player1", "Player2")
         self._pending_transition_id = None
+        self._point_flash_p1 = None
+        self._point_flash_p2 = None
 
         if self.render_mode == "graph":
             self._ensure_graph_renderer()
@@ -178,8 +185,25 @@ class BJJEnv(gym.Env):
                     description=node_data.get("description", str(end)),
                 ))
 
+        p1_pts_before = self.game.player1.points
+        p2_pts_before = self.game.player2.points
+        edge_data = move[1]
+        scoring_moves = [
+            name.capitalize()
+            for name in self.game.board.rewards
+            if edge_data.get(name, False)
+        ]
+
         self.game.play_turn(move)
         self.game.turn_count += 1
+
+        p1_delta = self.game.player1.points - p1_pts_before
+        p2_delta = self.game.player2.points - p2_pts_before
+        label = " + ".join(scoring_moves) if scoring_moves else "Points"
+        if p1_delta > 0:
+            self._point_flash_p1 = (f"{label}! +{p1_delta} pts", time.time())
+        if p2_delta > 0:
+            self._point_flash_p2 = (f"{label}! +{p2_delta} pts", time.time())
 
         # terminated: game ended naturally (submission or position win)
         terminated = self.game.winner is not None
@@ -231,12 +255,24 @@ class BJJEnv(gym.Env):
         """Build display-info dict for the renderer overlay text."""
         node = self.game.game_state.current_node
         node_data = self.game.game_state.board.get_node_data(node)
-        return {
+        info: dict[str, object] = {
             "description": node_data.get("description", str(node)),
             "p1_points": self.game.player1.points,
             "p2_points": self.game.player2.points,
             "turn": self.game.turn_count,
         }
+        now = time.time()
+        if self._point_flash_p1:
+            if now - self._point_flash_p1[1] < POINT_FLASH_DURATION:
+                info["p1_flash"] = self._point_flash_p1[0]
+            else:
+                self._point_flash_p1 = None
+        if self._point_flash_p2:
+            if now - self._point_flash_p2[1] < POINT_FLASH_DURATION:
+                info["p2_flash"] = self._point_flash_p2[0]
+            else:
+                self._point_flash_p2 = None
+        return info
 
     def render(self) -> np.ndarray | list[np.ndarray] | str | None:
         """Render the environment according to render_mode."""
