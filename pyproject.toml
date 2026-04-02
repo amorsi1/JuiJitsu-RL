@@ -35,3 +35,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/Game", "src/Graph", "src/render"]
+
+[tool.uv]
+exclude-newer = "1 week" 
