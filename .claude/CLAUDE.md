@@ -85,8 +85,8 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 HUD layout (shared between human and graph render modes via `draw_hud_overlay`):
 - Row 1: turn number, centred, 20 px (`HUD_TURN_FONT_SIZE`)
-- Row 2: P1 score top-left in bold red, P2 score top-right in bold blue, 36 px (`HUD_LARGE_FONT_SIZE`)
-- Row 3: current position name, top-left, 15 px (`HUD_MEDIUM_FONT_SIZE`)
+- Row 2: current position name, centred, 15 px (`HUD_MEDIUM_FONT_SIZE`)
+- Row 3: P1 score top-left in bold red, P2 score top-right in bold blue, 36 px (`HUD_LARGE_FONT_SIZE`)
 - Text outline: 8 black copies at ±1 px offsets before the coloured text — no background rectangles
 - `HUD_TOP_RESERVE = 100` px is the vertical space reserved above the figure/graph area
 

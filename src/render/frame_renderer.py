@@ -163,9 +163,9 @@ def draw_hud_overlay(
 
     Layout:
     - Very top center: turn number (20 px, outlined).
+    - Below center:     current position name in medium text (outlined).
     - Below, top-left:  P1 points in large bold red (outlined).
     - Below, top-right: P2 points in large bold blue (outlined).
-    - Below P1:  current position name in medium text (outlined).
 
     Text outline is achieved by blitting 8 black copies at ±1-px offsets
     before the coloured text — no background rectangle.
@@ -213,8 +213,14 @@ def draw_hud_overlay(
     turn_x = (width - tw) // 2
     th_turn = _blit_outlined(turn_text, TEXT_COLOR, font_turn, turn_x, HUD_MARGIN)
 
-    # Row 2 — large player scores
-    score_y = HUD_MARGIN + th_turn + 4
+    # Row 2 — position name, centred under turn
+    desc_surf = font_medium.render(description, True, TEXT_COLOR)  # type: ignore[union-attr]
+    desc_x = (width - desc_surf.get_width()) // 2
+    desc_y = HUD_MARGIN + th_turn + 4
+    th_desc = _blit_outlined(description, TEXT_COLOR, font_medium, desc_x, desc_y)
+
+    # Row 3 — large player scores
+    score_y = desc_y + th_desc + 4
     th_large = _blit_outlined(
         f"P1: {p1_pts}", PLAYER_COLORS[0], font_large, HUD_MARGIN, score_y,
     )
@@ -223,12 +229,8 @@ def draw_hud_overlay(
         width - HUD_MARGIN, score_y, right_align=True,
     )
 
-    # Row 3 — position name, below P1 score
-    info_y = score_y + th_large + 3
-    _blit_outlined(f"{description}", TEXT_COLOR, font_medium, HUD_MARGIN, info_y)
-
     # Row 4 — point flash messages (temporary, keyed off p1_flash / p2_flash)
-    flash_y = info_y + 20
+    flash_y = score_y + th_large + 3
     p1_flash = player_info.get("p1_flash")
     if p1_flash:
         _blit_outlined(str(p1_flash), PLAYER_COLORS[0], font_medium, HUD_MARGIN, flash_y)
