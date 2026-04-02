@@ -23,24 +23,24 @@ class BJJMetricsCallback(BaseCallback):
 
     def __init__(self, verbose: int = 0) -> None:
         super().__init__(verbose)
-        self._wins: list[bool] = []
-        self._point_diffs: list[float] = []
+        self._win_buffer: list[bool] = []
+        self._point_diff_buffer: list[float] = []
 
     def _on_step(self) -> bool:
         for info in self.locals["infos"]:
             if "is_win" in info:
-                self._wins.append(info["is_win"])
-                self._point_diffs.append(info["point_diff"])
+                self._win_buffer.append(info["is_win"])
+                self._point_diff_buffer.append(info["point_diff"])
         return True
 
     def _on_rollout_end(self) -> None:
-        if self._wins:
-            win_rate = sum(self._wins) / len(self._wins)
-            mean_point_diff = sum(self._point_diffs) / len(self._point_diffs)
+        if self._win_buffer:
+            win_rate = sum(self._win_buffer) / len(self._win_buffer)
+            mean_point_diff = sum(self._point_diff_buffer) / len(self._point_diff_buffer)
             self.logger.record("bjj/win_rate", win_rate)
             self.logger.record("bjj/mean_point_diff", mean_point_diff)
-        self._wins = []
-        self._point_diffs = []
+        self._win_buffer = []
+        self._point_diff_buffer = []
 
 
 def train(

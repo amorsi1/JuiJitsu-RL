@@ -170,6 +170,8 @@ def test_terminal_info_contains_bjj_metrics(env: BJJEnv) -> None:
     while not (terminated or truncated):
         masks = env.action_masks()
         legal_actions = np.where(masks)[0]
+        if len(legal_actions) == 0:
+            break
         action = int(np.random.choice(legal_actions))
         obs, _reward, terminated, truncated, info = env.step(action)
         if terminated or truncated:
@@ -219,8 +221,11 @@ def test_bjj_metrics_callback_extracts_metrics() -> None:
 
     callback = BJJMetricsCallback()
 
-    # Provide a minimal model so init_callback succeeds
+    # Provide a minimal model with logger configured so init_callback succeeds
+    from stable_baselines3.common.logger import configure as sb3_configure
+
     model = MaskablePPO("MlpPolicy", BJJEnv(), verbose=0)
+    model.set_logger(sb3_configure(format_strings=[]))  # silent logger for unit test
     callback.init_callback(model)
 
     # Simulate three SB3 _on_step() calls — two terminal, one non-terminal
