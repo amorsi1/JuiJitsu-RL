@@ -132,16 +132,23 @@ TEXT_COLOR: tuple[int, int, int] = (200, 200, 200)
 
 HUD_LARGE_FONT_SIZE: int = 36
 HUD_MEDIUM_FONT_SIZE: int = 15
+HUD_TURN_FONT_SIZE: int = 20
 HUD_MARGIN: int = 8
-HUD_BG_COLOR: tuple[int, int, int] = (0, 0, 0)
-HUD_BG_PADDING: int = 3
 # Pixels reserved at the top of the frame for the HUD; keep in sync with
 # layout offsets in _project_joints and graph_renderer.MARGIN_TOP.
-HUD_TOP_RESERVE: int = 80
+HUD_TOP_RESERVE: int = 100
 
 # ---------------------------------------------------------------------------
 # HUD overlay
 # ---------------------------------------------------------------------------
+
+
+_OUTLINE_OFFSETS: tuple[tuple[int, int], ...] = (
+    (-1, -1), (-1, 0), (-1, 1),
+    (0, -1),           (0, 1),
+    (1, -1),  (1, 0),  (1, 1),
+)
+_OUTLINE_COLOR: tuple[int, int, int] = (0, 0, 0)
 
 
 def draw_hud_overlay(
@@ -150,20 +157,26 @@ def draw_hud_overlay(
     width: int,
     font_large: object,
     font_medium: object,
+    font_turn: object,
 ) -> None:
     """Draw the scoreboard HUD onto *surface*.
 
     Layout:
-    - Top-left:  P1 points in large bold red, with black background rect.
-    - Top-right: P2 points in large bold blue, with black background rect.
-    - Below P1:  current position name and turn counter in medium text.
+    - Very top center: turn number (20 px, outlined).
+    - Below, top-left:  P1 points in large bold red (outlined).
+    - Below, top-right: P2 points in large bold blue (outlined).
+    - Below P1:  current position name in medium text (outlined).
+
+    Text outline is achieved by blitting 8 black copies at ±1-px offsets
+    before the coloured text — no background rectangle.
 
     Args:
         surface: pygame Surface to draw onto.
         player_info: Dict with keys 'p1_points', 'p2_points', 'description', 'turn'.
-        width: Surface pixel width (used to right-align P2 score).
+        width: Surface pixel width (used to centre turn and right-align P2).
         font_large: Initialised pygame Font for large player scores.
-        font_medium: Initialised pygame Font for position/turn info.
+        font_medium: Initialised pygame Font for position info.
+        font_turn: Initialised pygame Font for the turn counter.
     """
     import pygame
 
@@ -175,7 +188,7 @@ def draw_hud_overlay(
     description = str(player_info.get("description", ""))
     turn = player_info.get("turn", "?")
 
-    def _blit_with_bg(
+    def _blit_outlined(
         text: str,
         color: tuple[int, int, int],
         font: object,
@@ -183,31 +196,36 @@ def draw_hud_overlay(
         y: int,
         right_align: bool = False,
     ) -> int:
-        text_surf = font.render(text, True, color)  # type: ignore[union-attr]
-        tw, th = text_surf.get_size()
+        """Blit text with a 1-px black outline. Returns rendered height."""
+        colored_surf = font.render(text, True, color)  # type: ignore[union-attr]
+        outline_surf = font.render(text, True, _OUTLINE_COLOR)  # type: ignore[union-attr]
+        tw, th = colored_surf.get_size()
         rx = x - tw if right_align else x
-        bg = pygame.Rect(
-            rx - HUD_BG_PADDING, y - HUD_BG_PADDING,
-            tw + 2 * HUD_BG_PADDING, th + 2 * HUD_BG_PADDING,
-        )
-        pygame.draw.rect(surface, HUD_BG_COLOR, bg)  # type: ignore[union-attr]
-        surface.blit(text_surf, (rx, y))  # type: ignore[union-attr]
+        for dx, dy in _OUTLINE_OFFSETS:
+            surface.blit(outline_surf, (rx + dx, y + dy))  # type: ignore[union-attr]
+        surface.blit(colored_surf, (rx, y))  # type: ignore[union-attr]
         return th
 
-    # Large player scores
-    th_large = _blit_with_bg(
-        f"P1: {p1_pts}", PLAYER_COLORS[0], font_large, HUD_MARGIN, HUD_MARGIN,
+    # Row 1 — turn number, centred at very top
+    turn_text = f"Turn {turn}"
+    turn_surf = font_turn.render(turn_text, True, TEXT_COLOR)  # type: ignore[union-attr]
+    tw = turn_surf.get_width()
+    turn_x = (width - tw) // 2
+    th_turn = _blit_outlined(turn_text, TEXT_COLOR, font_turn, turn_x, HUD_MARGIN)
+
+    # Row 2 — large player scores
+    score_y = HUD_MARGIN + th_turn + 4
+    th_large = _blit_outlined(
+        f"P1: {p1_pts}", PLAYER_COLORS[0], font_large, HUD_MARGIN, score_y,
     )
-    _blit_with_bg(
+    _blit_outlined(
         f"P2: {p2_pts}", PLAYER_COLORS[1], font_large,
-        width - HUD_MARGIN, HUD_MARGIN, right_align=True,
+        width - HUD_MARGIN, score_y, right_align=True,
     )
 
-    # Medium position + turn info below P1 score
-    info_y = HUD_MARGIN + th_large + HUD_BG_PADDING * 2 + 2
-    _blit_with_bg(
-        f"{description}  |  Turn {turn}", TEXT_COLOR, font_medium, HUD_MARGIN, info_y,
-    )
+    # Row 3 — position name, below P1 score
+    info_y = score_y + th_large + 3
+    _blit_outlined(f"{description}", TEXT_COLOR, font_medium, HUD_MARGIN, info_y)
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +278,7 @@ class FrameRenderer:
         self._font: object | None = None
         self._font_large: object | None = None
         self._font_medium: object | None = None
+        self._font_turn: object | None = None
         self._raw_transitions: dict[int, dict] | None = None
         self._frame_cache: dict[int, dict] = {}
         self._last_node_id: int | None = None
@@ -281,6 +300,8 @@ class FrameRenderer:
             self._font_large = pygame.font.SysFont("monospace", HUD_LARGE_FONT_SIZE, bold=True)
         if self._font_medium is None:
             self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
+        if self._font_turn is None:
+            self._font_turn = pygame.font.SysFont("monospace", HUD_TURN_FONT_SIZE)
 
     def _ensure_display(self) -> None:
         """Initialize pygame display for human mode."""
@@ -443,7 +464,8 @@ class FrameRenderer:
         # HUD overlay (always on top)
         self._ensure_fonts()
         draw_hud_overlay(
-            surface, player_info, self._width, self._font_large, self._font_medium,
+            surface, player_info, self._width,
+            self._font_large, self._font_medium, self._font_turn,
         )
 
     def _draw_frame(
@@ -562,3 +584,4 @@ class FrameRenderer:
             self._font = None
             self._font_large = None
             self._font_medium = None
+            self._font_turn = None

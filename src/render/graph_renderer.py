@@ -19,6 +19,7 @@ from render.frame_renderer import (
     HUD_LARGE_FONT_SIZE,
     HUD_MEDIUM_FONT_SIZE,
     HUD_TOP_RESERVE,
+    HUD_TURN_FONT_SIZE,
     PLAYER_COLORS,
     TEXT_COLOR,
     draw_hud_overlay,
@@ -190,6 +191,7 @@ class GraphRenderer:
         self._font: object | None = None
         self._font_large: object | None = None
         self._font_medium: object | None = None
+        self._font_turn: object | None = None
         self._small_font: object | None = None
 
     # -------------------------------------------------------------------
@@ -304,6 +306,7 @@ class GraphRenderer:
             self._font = None
             self._font_large = None
             self._font_medium = None
+            self._font_turn = None
             self._small_font = None
 
     # -------------------------------------------------------------------
@@ -466,6 +469,8 @@ class GraphRenderer:
             self._font_large = pygame.font.SysFont("monospace", HUD_LARGE_FONT_SIZE, bold=True)
         if self._font_medium is None:
             self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
+        if self._font_turn is None:
+            self._font_turn = pygame.font.SysFont("monospace", HUD_TURN_FONT_SIZE)
 
     def _layout_to_screen(
         self, layout: dict[int, tuple[float, float]]
@@ -664,7 +669,8 @@ class GraphRenderer:
 
         if player_info:
             draw_hud_overlay(
-                surface, player_info, self._width, self._font_large, self._font_medium,
+                surface, player_info, self._width,
+                self._font_large, self._font_medium, self._font_turn,
             )
         else:
             import pygame
