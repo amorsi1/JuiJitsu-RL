@@ -60,6 +60,8 @@ Classes in dependency order:
 
 Move legality is based on the `top`/`bottom` edge attributes relative to the acting player's position. When an edge has `swaps_players=True`, the top/bottom assignments flip after the move.
 
+`play_turn()` always leaves the game in a playable state via `ensure_playable_state()`, called after `switch_players()`. This handles two post-turn edge cases: dead-end nodes (reinitialize) and positions where all outgoing edges require the opposite player's role (switch again). Since players have opposite positions, at most one extra switch is needed for non-dead-end nodes.
+
 ### 3. RL Environment (`Game/gym_env.py`)
 
 `BJJEnv` wraps the game engine as a Gymnasium environment:
@@ -80,6 +82,13 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 ### 4. Visualization (`render/`)
 
 **Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D figures using pygame with orthographic XY projection. Features: z-depth shading (closer parts brighter, 0.4–1.0 brightness range), anatomical segment widths from JS viewer proportions (`SEGMENT_DEFS` with `radius_center`), proportional joint radii (`JOINT_RADII`), and painter's algorithm draw order (back-to-front across both players for correct occlusion). Uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and 28-segment connectivity with `SegmentDef` NamedTuples ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
+
+HUD layout (shared between human and graph render modes via `draw_hud_overlay`):
+- Row 1: turn number, centred, 20 px (`HUD_TURN_FONT_SIZE`)
+- Row 2: P1 score top-left in bold red, P2 score top-right in bold blue, 36 px (`HUD_LARGE_FONT_SIZE`)
+- Row 3: current position name, top-left, 15 px (`HUD_MEDIUM_FONT_SIZE`)
+- Text outline: 8 black copies at ±1 px offsets before the coloured text — no background rectangles
+- `HUD_TOP_RESERVE = 100` px is the vertical space reserved above the figure/graph area
 
 **Graph renderer** (`render/graph_renderer.py`): `GraphRenderer` draws a directed graph of positions visited during gameplay using pygame. Nodes show truncated position names inside circles; node outline color indicates which player is on top (red=P1, blue=P2). Edges are directed arrows colored by who made the move. Uses `networkx.spring_layout` with position seeding for stable incremental layout. A sliding window (default 10 nodes) prunes old nodes to keep the view readable. Integrated into BJJEnv via `render_mode="graph"`. Key dataclasses: `MoveRecord` (captured before `play_turn()` mutates state), `VisibleNode`, `VisibleEdge`.
 
