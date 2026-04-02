@@ -61,9 +61,8 @@ def add_edges(transitions: list, G: nx.DiGraph):
         # adds edge in opposite direction if the transition is bidirectional
         if any(['bidirectional' in prop for prop in transition['properties']]):
             transition_copy = copy.deepcopy(transition)
-            # note: this is a different id than in the imported .js object. We will fix this in the next step
-            transition['id'] = -edge_id
-            transition['reversible'] = True
+            transition_copy['id'] = -edge_id  # reverse edge gets a unique negative ID
+            transition_copy['reversible'] = True
             G.add_edge(end, start, **transition_copy)
 
     return G
