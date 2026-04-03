@@ -1,14 +1,29 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from .play_game import Game, Board, GameState, Player, tqdm
+from pathlib import Path
+from .logging_utils import build_gameplay_logger
+from .play_game import Game, Board, GameState, tqdm
 from typing import List, Tuple, Dict, Optional, Any
 import random
+
+
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
+
+
 class BJJEnv(gym.Env):
-    def __init__(self):
-        self.game = Game("BJJ Match")
+    metadata = {"render_modes": ["human"]}
+
+    def __init__(self, render_mode: str | None = None, gameplay_log_path: Path | None = None):
+        self.render_mode = render_mode
+        self.gameplay_log_path = Path(gameplay_log_path) if gameplay_log_path is not None else None
+        self.gameplay_logger = build_gameplay_logger(
+            f"Game.gameplay.env.{id(self)}",
+            to_stdout=(self.render_mode is not None),
+            file_path=self.gameplay_log_path,
+        )
+        self.game = Game("BJJ Match", logger=self.gameplay_logger)
         self.game.initialize_game("Player1", "Player2")
         self.G = self.game.board.graph
 
@@ -41,7 +56,6 @@ class BJJEnv(gym.Env):
         })
 
         # Define observation space
-        # Note: SB3 will want a flat obervation space. In the future this may be consolidated into something like:
 
         self.observation_space = spaces.Box(                                                                                                
         low=np.array([0, -1e4, 0, 0, 0], dtype=np.float32),                                                                             
@@ -111,9 +125,9 @@ class BJJEnv(gym.Env):
             random.seed(seed)  # Also seed Python's random, used by Game internals
 
         # Fully reset the game
-        self.game = Game("BJJ Match")  # Create a new game instance
+        self.game = Game("BJJ Match", logger=self.gameplay_logger)  # Create a new game instance
         self.game.board = Board(self.G)  # Reset the board with the graph
-        self.game.game_state = GameState(self.game.board)  # Reset the game state
+        self.game.game_state = GameState(self.game.board, logger=self.gameplay_logger)  # Reset the game state
         self.game.turn_count = 0
 
         self.game.initialize_game("Player1", "Player2")

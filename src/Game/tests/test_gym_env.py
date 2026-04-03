@@ -31,6 +31,10 @@ def test_check_env_passes():
     check_env(BJJEnv(), warn=False)
 
 
+def test_metadata_declares_human_render_mode():
+    assert "human" in BJJEnv.metadata["render_modes"]
+
+
 # ---------------------------------------------------------------------------
 # 2. reset() contract
 # ---------------------------------------------------------------------------
