@@ -273,7 +273,7 @@ def test_train_with_callbacks(tmp_path: pytest.TempPathFactory) -> None:
     """train() with callback parameters must complete and save a model file."""
     from Game.train_sb3 import train
 
-    model = train(
+    model, mean_reward, std_reward = train(
         total_timesteps=512,
         save_path=tmp_path / "model",
         tensorboard_log=tmp_path / "logs",

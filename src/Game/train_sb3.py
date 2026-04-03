@@ -58,7 +58,7 @@ def train(
     checkpoint_freq: int = 10_000,
     checkpoint_dir: Path = Path("models/checkpoints"),
     best_model_dir: Path = Path("models/best_model"),
-) -> MaskablePPO:
+) -> tuple[MaskablePPO, float, float]:
     """Train a MaskablePPO agent on BJJEnv-v0.
 
     Args:
@@ -78,7 +78,8 @@ def train(
         best_model_dir: Directory to save the best model found during eval.
 
     Returns:
-        The trained MaskablePPO model.
+        Tuple of (model, mean_reward, std_reward) — the trained model and its
+        final evaluation statistics.
     """
     env = BJJEnv()
     env.reset(seed=seed)
@@ -132,7 +133,7 @@ def train(
     model.save(str(save_path))
     print(f"Model saved to {save_path}")
 
-    return model
+    return model, mean_reward, std_reward
 
 
 def load_and_evaluate(
