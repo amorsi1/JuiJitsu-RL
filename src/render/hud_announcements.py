@@ -10,8 +10,9 @@ PanelStyle = Literal["celebration", "text_only"]
 
 WIN_FLASH_DURATION: float = 1.5
 TELEPORT_FLASH_DURATION: float = 1.0
-WIN_FLASH_FONT_SIZE: int = 72
-TELEPORT_FLASH_FONT_SIZE: int = 40
+# Keep announcement text aligned with HUD player-point text size.
+WIN_FLASH_FONT_SIZE: int = 36
+TELEPORT_FLASH_FONT_SIZE: int = 36
 
 TELEPORT_TEXT_COLOR: tuple[int, int, int] = (210, 210, 210)
 WIN_PANEL_FILL: tuple[int, int, int] = (245, 196, 66)
