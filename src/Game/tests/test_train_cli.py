@@ -5,13 +5,16 @@ classes and configuration keys, and that train() dispatches to the right
 algorithm class based on the `algorithm` parameter.
 """
 
+import sys
+from pathlib import Path
+
 import pytest
 
 import Game  # noqa: F401 — triggers BJJEnv-v0 registration
 from Game.gym_env import BJJEnv
 from sb3_contrib import MaskablePPO
 from Game.maskable_recurrent import MaskableRecurrentPPO
-from Game.train_sb3 import ALGORITHMS, train
+from Game.train_sb3 import ALGORITHMS, load_and_evaluate, parse_args, train
 
 
 # ---------------------------------------------------------------------------
@@ -144,3 +147,156 @@ def test_train_saves_model_file(tmp_path: pytest.TempPathFactory) -> None:
     assert (tmp_path / "model.zip").exists(), (
         f"Expected model file at {tmp_path / 'model.zip'} but it was not found"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Render/log wiring for train() and load_and_evaluate()
+# ---------------------------------------------------------------------------
+
+
+class _DummyEnv:
+    created: list["_DummyEnv"] = []
+
+    def __init__(self, render_mode=None, gameplay_log_path=None):
+        self.render_mode = render_mode
+        self.gameplay_log_path = gameplay_log_path
+        _DummyEnv.created.append(self)
+
+    def reset(self, seed=None):
+        return None, None
+
+
+class _DummyAlgo:
+    def __init__(self, policy, env, **kwargs):
+        self.policy = policy
+        self.env = env
+        self.n_steps = kwargs.get("n_steps")
+
+    def learn(self, total_timesteps, use_masking=True, callback=None):
+        return self
+
+    def save(self, path):
+        Path(f"{path}.zip").write_text("dummy model")
+
+    @classmethod
+    def load(cls, path, env):
+        return cls("MlpPolicy", env)
+
+
+class _DummyCallback:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
+def _patch_train_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("Game.train_sb3.BJJEnv", _DummyEnv)
+    monkeypatch.setattr("Game.train_sb3.MaskableEvalCallback", _DummyCallback)
+    monkeypatch.setattr("Game.train_sb3.CheckpointCallback", _DummyCallback)
+    monkeypatch.setattr("Game.train_sb3.CallbackList", lambda callbacks: callbacks)
+    monkeypatch.setattr("Game.train_sb3.evaluate_policy", lambda *args, **kwargs: (0.0, 0.0))
+    monkeypatch.setitem(ALGORITHMS["maskable_ppo"], "class", _DummyAlgo)
+
+
+def test_train_default_eval_env_is_silent(monkeypatch, tmp_path) -> None:
+    _DummyEnv.created = []
+    _patch_train_stack(monkeypatch)
+
+    train(
+        algorithm="maskable_ppo",
+        total_timesteps=1,
+        save_path=tmp_path / "model",
+        tensorboard_log=tmp_path / "logs",
+        eval_freq=1,
+        n_eval_episodes=1,
+        checkpoint_freq=1,
+        checkpoint_dir=tmp_path / "cp",
+        best_model_dir=tmp_path / "best",
+        verbose=0,
+    )
+
+    assert len(_DummyEnv.created) == 2
+    assert _DummyEnv.created[0].render_mode is None  # training env
+    assert _DummyEnv.created[1].render_mode is None  # eval env default
+    assert _DummyEnv.created[1].gameplay_log_path is None
+
+
+def test_train_eval_env_respects_render_and_log_args(monkeypatch, tmp_path) -> None:
+    _DummyEnv.created = []
+    _patch_train_stack(monkeypatch)
+    eval_log_path = tmp_path / "eval.log"
+
+    train(
+        algorithm="maskable_ppo",
+        total_timesteps=1,
+        save_path=tmp_path / "model",
+        tensorboard_log=tmp_path / "logs",
+        eval_freq=1,
+        n_eval_episodes=1,
+        eval_render_mode="human",
+        eval_gameplay_log_path=eval_log_path,
+        checkpoint_freq=1,
+        checkpoint_dir=tmp_path / "cp",
+        best_model_dir=tmp_path / "best",
+        verbose=0,
+    )
+
+    assert len(_DummyEnv.created) == 2
+    assert _DummyEnv.created[0].render_mode is None
+    assert _DummyEnv.created[1].render_mode == "human"
+    assert _DummyEnv.created[1].gameplay_log_path == eval_log_path
+
+
+def test_load_and_evaluate_default_env_is_silent(monkeypatch) -> None:
+    _DummyEnv.created = []
+    monkeypatch.setattr("Game.train_sb3.BJJEnv", _DummyEnv)
+    monkeypatch.setattr("Game.train_sb3.evaluate_policy", lambda *args, **kwargs: (0.0, 0.0))
+    monkeypatch.setitem(ALGORITHMS["maskable_ppo"], "class", _DummyAlgo)
+
+    load_and_evaluate(
+        model_path=Path("/tmp/does_not_matter"),
+        algorithm="maskable_ppo",
+        n_eval_episodes=1,
+    )
+
+    assert len(_DummyEnv.created) == 1
+    assert _DummyEnv.created[0].render_mode is None
+    assert _DummyEnv.created[0].gameplay_log_path is None
+
+
+def test_load_and_evaluate_respects_render_and_log_args(monkeypatch, tmp_path) -> None:
+    _DummyEnv.created = []
+    monkeypatch.setattr("Game.train_sb3.BJJEnv", _DummyEnv)
+    monkeypatch.setattr("Game.train_sb3.evaluate_policy", lambda *args, **kwargs: (0.0, 0.0))
+    monkeypatch.setitem(ALGORITHMS["maskable_ppo"], "class", _DummyAlgo)
+    eval_log_path = tmp_path / "eval.log"
+
+    load_and_evaluate(
+        model_path=Path("/tmp/does_not_matter"),
+        algorithm="maskable_ppo",
+        n_eval_episodes=1,
+        render_mode="human",
+        gameplay_log_path=eval_log_path,
+    )
+
+    assert len(_DummyEnv.created) == 1
+    assert _DummyEnv.created[0].render_mode == "human"
+    assert _DummyEnv.created[0].gameplay_log_path == eval_log_path
+
+
+def test_parse_args_reads_eval_render_flags(monkeypatch, tmp_path) -> None:
+    expected_path = tmp_path / "eval.log"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_sb3.py",
+            "--eval-render-mode",
+            "human",
+            "--eval-gameplay-log-path",
+            str(expected_path),
+        ],
+    )
+    args = parse_args()
+    assert args.eval_render_mode == "human"
+    assert args.eval_gameplay_log_path == expected_path

@@ -35,6 +35,8 @@ def objective(trial: optuna.Trial) -> float:
         tensorboard_log=None,
         eval_freq=999_999,
         n_eval_episodes=5,
+        eval_render_mode=None,
+        eval_gameplay_log_path=None,
         save_path=Path(f"/tmp/hpo_trial_{trial.number}"),
         checkpoint_dir=Path("/tmp/hpo_checkpoints"),
         best_model_dir=Path("/tmp/hpo_best"),
@@ -139,6 +141,8 @@ def train_with_hpo(
         seed=seed,
         save_path=save_path,
         tensorboard_log=tensorboard_log,
+        eval_render_mode=None,
+        eval_gameplay_log_path=None,
     )
 
 

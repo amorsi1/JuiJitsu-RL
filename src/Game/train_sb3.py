@@ -88,6 +88,8 @@ def train(
     tensorboard_log: Path | None = None,
     eval_freq: int = 5_000,
     n_eval_episodes: int = 10,
+    eval_render_mode: str | None = None,
+    eval_gameplay_log_path: Path | None = None,
     checkpoint_freq: int = 10_000,
     checkpoint_dir: Path | None = None,
     best_model_dir: Path | None = None,
@@ -107,6 +109,9 @@ def train(
         tensorboard_log: Directory for TensorBoard logs. None disables logging.
         eval_freq: Evaluate every this many timesteps.
         n_eval_episodes: Episodes per evaluation.
+        eval_render_mode: Render mode used by the evaluation environment.
+            Any non-None value enables gameplay logs to stdout.
+        eval_gameplay_log_path: Optional path to write evaluation gameplay traces.
         checkpoint_freq: Save a checkpoint every this many timesteps.
         checkpoint_dir: Directory for periodic checkpoint saves.
         best_model_dir: Directory to save the best model found during eval.
@@ -127,7 +132,7 @@ def train(
     resolved_checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir is not None else Path("models/checkpoints")
     resolved_best_model_dir = Path(best_model_dir) if best_model_dir is not None else Path("models/best_model")
 
-    env = BJJEnv()
+    env = BJJEnv(render_mode=None)
     env.reset(seed=seed)
 
     model = algo_class(
@@ -142,7 +147,10 @@ def train(
         tensorboard_log=str(resolved_tb),
     )
 
-    eval_env = BJJEnv()
+    eval_env = BJJEnv(
+        render_mode=eval_render_mode,
+        gameplay_log_path=eval_gameplay_log_path,
+    )
     callbacks: list[Any] = [
         MaskableEvalCallback(
             eval_env=eval_env,
@@ -168,7 +176,7 @@ def train(
     )
 
     mean_reward, std_reward = evaluate_policy(
-        model, env, n_eval_episodes=10, deterministic=True
+        model, eval_env, n_eval_episodes=10, deterministic=True
     )
     print(f"Evaluation over 10 episodes: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
@@ -189,6 +197,8 @@ def load_and_evaluate(
     algorithm: str = "maskable_ppo",
     n_eval_episodes: int = 10,
     deterministic: bool = True,
+    render_mode: str | None = None,
+    gameplay_log_path: Path | None = None,
 ) -> tuple[float, float]:
     """Load a saved model and evaluate it.
 
@@ -197,6 +207,8 @@ def load_and_evaluate(
         algorithm: Algorithm key used to look up the correct class for ``.load()``.
         n_eval_episodes: Number of episodes to evaluate over.
         deterministic: Whether to use deterministic actions during evaluation.
+        render_mode: Render mode for evaluation. Any non-None value enables console traces.
+        gameplay_log_path: Optional path to write gameplay traces during evaluation.
 
     Returns:
         Tuple of (mean_reward, std_reward).
@@ -205,7 +217,7 @@ def load_and_evaluate(
         raise ValueError(f"Unknown algorithm {algorithm!r}. Choose from: {list(ALGORITHMS)}")
 
     algo_class = ALGORITHMS[algorithm]["class"]
-    env = BJJEnv()
+    env = BJJEnv(render_mode=render_mode, gameplay_log_path=gameplay_log_path)
     model = algo_class.load(str(model_path), env=env)
 
     mean_reward, std_reward = evaluate_policy(
@@ -241,6 +253,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verbose", type=int, default=1)
     parser.add_argument("--eval-freq", type=int, default=5_000)
     parser.add_argument("--n-eval-episodes", type=int, default=10)
+    parser.add_argument(
+        "--eval-render-mode",
+        type=str,
+        default=None,
+        help="Evaluation render mode. Any non-None value enables gameplay logs to stdout.",
+    )
+    parser.add_argument(
+        "--eval-gameplay-log-path",
+        type=Path,
+        default=None,
+        help="Optional file path to write evaluation gameplay traces.",
+    )
     parser.add_argument("--checkpoint-freq", type=int, default=10_000)
     return parser.parse_args()
 
@@ -258,5 +282,7 @@ if __name__ == "__main__":
         verbose=args.verbose,
         eval_freq=args.eval_freq,
         n_eval_episodes=args.n_eval_episodes,
+        eval_render_mode=args.eval_render_mode,
+        eval_gameplay_log_path=args.eval_gameplay_log_path,
         checkpoint_freq=args.checkpoint_freq,
     )
