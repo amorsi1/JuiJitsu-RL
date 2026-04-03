@@ -1,7 +1,9 @@
 from Game.play_game import Board, GameState, Player
+from Game.logging_utils import build_gameplay_logger
 import random
 import networkx as nx
 import numpy as np
+import logging
 from typing import List, Optional
 from Graph.graph_constructor import construct_graph
 import matplotlib.pyplot as plt
@@ -77,10 +79,13 @@ class DynamicGraphVisualizer:
         self.fig.canvas.flush_events()
 
 class Game:
-    def __init__(self, name: str):
+    def __init__(self, name: str, logger: logging.Logger | None = None):
         self.name = name
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.visualizer.{id(self)}", to_stdout=False
+        )
         self.board = Board(construct_graph())
-        self.game_state = GameState(self.board)
+        self.game_state = GameState(self.board, logger=self.logger)
         self.turn_count = 0
         self.player1: Optional[Player] = None
         self.player2: Optional[Player] = None
@@ -96,7 +101,7 @@ class Game:
             return self.player1
 
     def initialize_game(self, p1_name: str, p2_name: str):
-        print(f'Initializing game: {self.name}')
+        self.logger.info(f"Initializing game: {self.name}")
         self.game_state.initialize()
         self.player1 = Player(p1_name)
         self.player2 = Player(p2_name)
@@ -114,8 +119,8 @@ class Game:
         self.player2.is_top = not self.player1.is_top
         self.player2.is_bottom = not self.player1.is_bottom
 
-        print(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
-        print(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
+        self.logger.info(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
+        self.logger.info(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
 
     def _swap_players_positions(self):
         """
@@ -131,27 +136,27 @@ class Game:
             # if current state is a terminal node, but not associated with a win or loss
             if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
                 # change to random node, then allow player to play their turn
-                print('Terminal position encountered. switching to random position ')
+                self.logger.info("Terminal position encountered. switching to random position ")
                 self.game_state.initialize()
                 self.play_turn()
             else:
-                print(f"No moves available for {self.current_player.name}. Switching players.")
+                self.logger.info(f"No moves available for {self.current_player.name}. Switching players.")
                 # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
                 return self._switch_players()
         else:
             move = self.current_player.choose_move(possible_moves)
             points, player_tapped, swap_players_positions = self.game_state.process_move(move)
             self.current_player.points += points
-            print(f"{self.current_player.name} performed '{move[1]['description']}'")
+            self.logger.info(f"{self.current_player.name} performed '{move[1]['description']}'")
             if points>0:
-                print(f'Player earned {points} points for that move')
+                self.logger.info(f"Player earned {points} points for that move")
 
             # Update the visualization
             self.visualizer.update()
 
             if player_tapped:
                 winning_player = self.choose_other_player(self.current_player)
-                print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
+                self.logger.info(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
                 self.winner = winning_player
                 return True
 
@@ -161,7 +166,7 @@ class Game:
                 winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
                                                   (self.player1.is_bottom and winner == 'bottom')) else self.player2
                 self.winner = winning_player
-                print(f"{winning_player.name} won by reaching a winning position!")
+                self.logger.info(f"{winning_player.name} won by reaching a winning position!")
                 return True
 
             if swap_players_positions:
@@ -176,19 +181,19 @@ class Game:
     def check_for_points_win(self):
         if self.player1.points > self.player2.points:
             self.winner = self.player1
-            print(f"{self.player1.name} wins!")
+            self.logger.info(f"{self.player1.name} wins!")
         elif self.player2.points > self.player1.points:
             self.winner = self.player2
-            print(f"{self.player2.name} wins!")
+            self.logger.info(f"{self.player2.name} wins!")
         else:
-            print("It's a tie!")
+            self.logger.info("It's a tie!")
 
     def play_game(self, max_turns: int = 100):
         plt.ion()  # Turn on interactive mode
         self.visualizer.fig.show()
         for turn in range(1, max_turns + 1):
             self.turn_count += 1
-            print(f"\nTurn {turn}:")
+            self.logger.info(f"\nTurn {turn}:")
             if self.play_turn():
                 break
         if not self.winner:
@@ -199,11 +204,16 @@ class Game:
         plt.show()  # Keep the final plot open
 
     def _print_game_result(self):
-        print("\nGame over! Final scores:")
-        print(f"{self.player1.name}: {self.player1.points}")
-        print(f"{self.player2.name}: {self.player2.points}")
+        self.logger.info("\nGame over! Final scores:")
+        self.logger.info(f"{self.player1.name}: {self.player1.points}")
+        self.logger.info(f"{self.player2.name}: {self.player2.points}")
 
-# Single game example
-game = Game("BJJ Simulation")
-game.initialize_game("Player 1", "Player 2")
-game.play_game()
+
+if __name__ == "__main__":
+    # Single game example
+    game = Game(
+        "BJJ Simulation",
+        logger=build_gameplay_logger("Game.gameplay.visualizer.demo", to_stdout=True),
+    )
+    game.initialize_game("Player 1", "Player 2")
+    game.play_game()

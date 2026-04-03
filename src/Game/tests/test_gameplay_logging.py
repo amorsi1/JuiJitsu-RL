@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import numpy as np
 
 from Game.gym_env import BJJEnv
@@ -53,3 +56,23 @@ def test_render_and_file_logging_write_to_both(tmp_path, capsys) -> None:
     contents = log_path.read_text()
     assert "Initializing game" in contents
     assert "performed" in contents
+
+
+def test_importing_play_game_has_no_demo_output() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import Game.play_game"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == ""
+
+
+def test_importing_play_game_visualizer_has_no_demo_output() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import Game.play_game_visualizer"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == ""
