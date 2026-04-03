@@ -81,7 +81,31 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 ### 3b. SB3 Training (`Game/train_sb3.py`)
 
-`train()` trains a MaskablePPO agent (sb3-contrib) on BJJEnv with action masking. Run via `uv run python -m Game.train_sb3`. Models save to `models/maskable_ppo_bjj` by default. `load_and_evaluate()` reloads and evaluates a saved model. Requires the `training` optional dependency group (`uv sync --extra training`).
+`train()` trains an agent on BJJEnv with action masking. Supports two algorithms via the `ALGORITHMS` registry:
+
+| Key | Class | Default n_steps | Default batch_size |
+|-----|-------|----------------|-------------------|
+| `"maskable_ppo"` | `MaskablePPO` | 2048 | 64 |
+| `"recurrent_ppo"` | `MaskableRecurrentPPO` | 128 | 128 |
+
+Run via CLI:
+```bash
+uv run python -m Game.train_sb3                                    # MaskablePPO (default)
+uv run python -m Game.train_sb3 --algorithm recurrent_ppo          # MaskableRecurrentPPO
+uv run python -m Game.train_sb3 --algorithm recurrent_ppo --total-timesteps 100000
+```
+
+`load_and_evaluate(model_path, algorithm)` reloads and evaluates a saved model. Both `train()` and `load_and_evaluate()` accept `algorithm` to dispatch to the correct class. Requires `uv sync --extra training`.
+
+### 3c. MaskableRecurrentPPO (`Game/maskable_recurrent/`)
+
+Custom algorithm combining `RecurrentPPO`'s LSTM memory with `MaskablePPO`'s action masking. No diamond inheritance — `MaskableRecurrentActorCriticPolicy` single-inherits from `RecurrentActorCriticPolicy` and grafts in masking by replacing `self.action_dist` with `make_masked_proba_distribution()` after `super().__init__()`, then rebuilding `action_net` and the optimizer.
+
+Key design details:
+- **Buffer**: `MaskableRecurrentRolloutBuffer` stores `action_masks` shape `(buffer_size, n_envs, n_actions)`, initialised all-ones. Padded timesteps use `padding_value=1.0` (not 0.0) to avoid `log(0)` in masked distributions.
+- **Policy alias**: `MlpLstmPolicy = MaskableRecurrentActorCriticPolicy` — use `"MlpLstmPolicy"` as the policy string.
+- **Training**: `model.learn(total_timesteps=N, use_masking=True)`
+- **Prediction**: `model.predict(obs, action_masks=masks)` — masks forwarded through policy to distribution.
 
 ### 4. Visualization (`render/`)
 
