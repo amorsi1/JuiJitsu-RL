@@ -10,6 +10,7 @@ Verifies that BJJEnv correctly implements Gymnasium's render_mode protocol:
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import gymnasium
@@ -331,7 +332,43 @@ def test_make_with_graph_mode() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 17. Teleport detection in graph mode
+# 17. step() smoke test for all render modes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("render_mode", [None, "ansi", "rgb_array", "human", "graph"])
+def test_step_smoke_all_render_modes(render_mode: str | None) -> None:
+    """reset()+step() should run without exceptions for every supported render mode."""
+    with ExitStack() as stack:
+        if render_mode in ("human", "rgb_array"):
+            mock_renderer_cls = stack.enter_context(patch("render.frame_renderer.FrameRenderer"))
+            mock_renderer = MagicMock()
+            frame = np.zeros((400, 600, 3), dtype=np.uint8)
+            mock_renderer.render_frame.return_value = None if render_mode == "human" else frame
+            mock_renderer.render_transition.return_value = (
+                None if render_mode == "human" else frame
+            )
+            mock_renderer_cls.return_value = mock_renderer
+
+        if render_mode == "graph":
+            mock_graph_cls = stack.enter_context(patch("render.graph_renderer.GraphRenderer"))
+            mock_graph = MagicMock()
+            mock_graph.render_graph.return_value = None
+            mock_graph_cls.return_value = mock_graph
+
+        env = BJJEnv(render_mode=render_mode)
+        try:
+            _obs, info = env.reset()
+            valid_actions = np.where(info["action_mask"])[0]
+            assert len(valid_actions) > 0, "Expected at least one valid action"
+
+            env.step(int(valid_actions[0]))
+        finally:
+            env.close()
+
+
+# ---------------------------------------------------------------------------
+# 18. Teleport detection in graph mode
 # ---------------------------------------------------------------------------
 
 
@@ -362,11 +399,7 @@ def test_teleport_calls_set_initial_state() -> None:
             different_node = (start + 2) % env.num_nodes
         env.game.game_state.current_node = different_node
 
-        # step() may produce inconsistent game state — that's fine for this test
-        try:
-            env.step(action)
-        except Exception:
-            pass
+        env.step(action)
 
         mock_gr.set_initial_state.assert_called()
         mock_gr.record_move.assert_not_called()
