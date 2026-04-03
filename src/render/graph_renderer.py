@@ -9,6 +9,7 @@ shown as dim background lines for context.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 
 import networkx as nx
@@ -24,6 +25,7 @@ from render.frame_renderer import (
     TEXT_COLOR,
     draw_hud_overlay,
 )
+from render.hud_announcements import AnnouncementEvent, build_announcement
 
 # ---------------------------------------------------------------------------
 # Graph-specific colors
@@ -193,6 +195,7 @@ class GraphRenderer:
         self._font_medium: object | None = None
         self._font_turn: object | None = None
         self._small_font: object | None = None
+        self._announcement_fonts: dict[int, object] = {}
 
     # -------------------------------------------------------------------
     # Public API
@@ -250,15 +253,40 @@ class GraphRenderer:
         render_mode: str,
         fps: int = 2,
         player_info: dict[str, object] | None = None,
+        announcement_event: AnnouncementEvent | None = None,
     ) -> np.ndarray | None:
         import pygame
 
         self._compute_layout()
+        if announcement_event is not None:
+            player_info = dict(player_info or {})
+            player_info["announcement_event"] = announcement_event
+
+        announcement = player_info.get("announcement_event") if player_info else None
+        announcement_spec = (
+            build_announcement(announcement)
+            if isinstance(announcement, AnnouncementEvent)
+            else None
+        )
+        is_win_announcement = (
+            isinstance(announcement, AnnouncementEvent)
+            and announcement.kind == "win"
+        )
 
         if render_mode == "human":
             self._ensure_display()
 
-            if self._anim_progress:
+            if is_win_announcement:
+                self._anim_progress.clear()
+                self._anim_parent.clear()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.close()
+                        return None
+                self._draw_graph(self._screen, player_info)
+                pygame.display.flip()
+                self._clock.tick(fps)  # type: ignore[union-attr]
+            elif self._anim_progress:
                 # Animate new node entrance over ANIM_FRAMES at ANIM_FPS
                 for _ in range(ANIM_FRAMES):
                     for event in pygame.event.get():
@@ -286,6 +314,8 @@ class GraphRenderer:
                 pygame.display.flip()
                 self._clock.tick(fps)  # type: ignore[union-attr]
 
+            if announcement_spec is not None:
+                self._hold_display(announcement_spec.hold_seconds, fps)
             return None
 
         # rgb_array — skip animation, draw final state
@@ -308,6 +338,7 @@ class GraphRenderer:
             self._font_medium = None
             self._font_turn = None
             self._small_font = None
+            self._announcement_fonts = {}
 
     # -------------------------------------------------------------------
     # Internal — pruning
@@ -471,6 +502,28 @@ class GraphRenderer:
             self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
         if self._font_turn is None:
             self._font_turn = pygame.font.SysFont("monospace", HUD_TURN_FONT_SIZE)
+
+    def _get_announcement_font(self, size: int) -> object:
+        import pygame
+
+        if size not in self._announcement_fonts:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            self._announcement_fonts[size] = pygame.font.SysFont("monospace", size, bold=True)
+        return self._announcement_fonts[size]
+
+    def _hold_display(self, duration_s: float, fps: int) -> None:
+        import pygame
+
+        if self._clock is None or duration_s <= 0:
+            return
+        stop_at = time.perf_counter() + duration_s
+        while time.perf_counter() < stop_at:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.close()
+                    return
+            self._clock.tick(max(1, fps))  # type: ignore[union-attr]
 
     def _layout_to_screen(
         self, layout: dict[int, tuple[float, float]]
@@ -669,8 +722,9 @@ class GraphRenderer:
 
         if player_info:
             draw_hud_overlay(
-                surface, player_info, self._width,
+                surface, player_info, self._width, self._height,
                 self._font_large, self._font_medium, self._font_turn,
+                self._get_announcement_font,
             )
         else:
             import pygame

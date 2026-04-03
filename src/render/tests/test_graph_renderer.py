@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import math
+from unittest.mock import MagicMock, patch
 
 import networkx as nx
 
@@ -21,6 +22,7 @@ from render.graph_renderer import (
     VisibleNode,
     _compute_terminal_distances,
 )
+from render.hud_announcements import AnnouncementEvent, build_announcement
 
 
 # ---------------------------------------------------------------------------
@@ -367,3 +369,75 @@ def test_nodes_not_collinear() -> None:
     assert abs(x1 - x2) >= MIN_NODE_SEP * 0.9, (
         f"Nodes 1 and 2 share the same Y but overlap in X: x1={x1:.3f}, x2={x2:.3f}"
     )
+
+
+def test_win_hold_clears_animation_before_draw() -> None:
+    import pygame
+
+    renderer = GraphRenderer(width=320, height=240)
+    renderer.set_initial_state(node_id=0, description="start", p1_is_top=True)
+    renderer.record_move(MoveRecord(from_node=0, to_node=1, mover=0, p1_is_top=True, turn=1))
+    assert renderer._anim_progress, "Expected pending animation before win render"
+
+    renderer._screen = pygame.Surface((320, 240))
+    renderer._clock = MagicMock()
+    renderer._ensure_display = lambda: None  # type: ignore[method-assign]
+    renderer._hold_display = MagicMock()  # type: ignore[method-assign]
+
+    seen_progress: list[dict[int, float]] = []
+    original_draw = renderer._draw_graph
+
+    def _capture(surface: object, player_info: dict[str, object] | None) -> None:
+        seen_progress.append(dict(renderer._anim_progress))
+        original_draw(surface, player_info)
+
+    renderer._draw_graph = _capture  # type: ignore[method-assign]
+
+    with patch("pygame.event.get", return_value=[]), patch("pygame.display.flip", return_value=None):
+        renderer.render_graph(
+            "human",
+            fps=24,
+            player_info={"description": "x", "p1_points": 0, "p2_points": 0, "turn": 1},
+            announcement_event=AnnouncementEvent(kind="win", winner_index=0, win_type="submission"),
+        )
+
+    assert seen_progress and seen_progress[0] == {}
+    assert renderer._anim_progress == {}
+    renderer._hold_display.assert_called_once()
+
+
+def test_teleport_announcement_drawn_after_reset_state() -> None:
+    renderer = GraphRenderer(width=320, height=240)
+    renderer.set_initial_state(node_id=22, description="reset", p1_is_top=False)
+
+    with patch("render.graph_renderer.draw_hud_overlay") as mock_overlay:
+        frame = renderer.render_graph(
+            "rgb_array",
+            player_info={"description": "reset", "p1_points": 0, "p2_points": 0, "turn": 3},
+            announcement_event=AnnouncementEvent(kind="teleport"),
+        )
+
+    assert isinstance(frame, np.ndarray)
+    assert renderer._current_node == 22
+    assert mock_overlay.called
+    args, _ = mock_overlay.call_args
+    info = args[1]
+    assert isinstance(info.get("announcement_event"), AnnouncementEvent)
+    assert info["announcement_event"].kind == "teleport"
+
+
+def test_render_graph_consumes_shared_announcement_builder() -> None:
+    renderer = GraphRenderer(width=320, height=240)
+    renderer.set_initial_state(node_id=0, description="start", p1_is_top=True)
+
+    with patch("render.graph_renderer.build_announcement") as mock_builder:
+        mock_builder.return_value = build_announcement(
+            AnnouncementEvent(kind="win", winner_index=1, win_type="position")
+        )
+        renderer.render_graph(
+            "rgb_array",
+            player_info={"description": "start", "p1_points": 1, "p2_points": 2, "turn": 4},
+            announcement_event=AnnouncementEvent(kind="win", winner_index=1, win_type="position"),
+        )
+
+    mock_builder.assert_called_once()
