@@ -24,6 +24,7 @@ training = [
     "sb3-contrib>=2.3",
     "torch<2.3",  # later versions lack macOS x86_64 wheels
     "tensorboard>=2.14",
+    "setuptools<82",  # tensorboard imports pkg_resources, removed in 82+
 ]
 
 [build-system]
