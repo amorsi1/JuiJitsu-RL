@@ -1,3 +1,4 @@
+import logging
 import random
 import networkx as nx
 from tqdm import tqdm
@@ -5,6 +6,7 @@ import numpy as np
 from typing import List, Tuple, Dict, Optional
 from Graph.graph_constructor import construct_graph
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from Game.logging_utils import build_gameplay_logger
 
 
 class Board:
@@ -24,16 +26,21 @@ class Board:
         return self.graph.nodes[node]['outgoing']
 
 class GameState:
-    def __init__(self, board: Board):
+    def __init__(self, board: Board, logger: logging.Logger | None = None):
         self.board = board
         self.current_node = None
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.gamestate.{id(self)}", to_stdout=False
+        )
 
     def initialize(self):
         # position 94 is 'symmetric staggered standing'. A central node with many possible outgoing edges
         self.current_node = random.choice([94, random.choice(list(self.board.graph.nodes()))])
 
     def update(self, new_node: int):
-        print(f"moving to position {self.board.get_node_data(new_node)['description']}")
+        self.logger.info(
+            f"moving to position {self.board.get_node_data(new_node)['description']}"
+        )
         self.current_node = new_node
 
     def get_possible_moves(self, is_top: bool, is_bottom: bool) -> List[Tuple[int, Dict]]:
@@ -73,9 +80,10 @@ class GameState:
         earned_points = 0  # iteratively add to this because a player may execute multiple maneuvers in the same move
         for maneuver, points in self.board.rewards.items():
             if edge_data.get(maneuver, False):
-                print(f'{maneuver} executed, player wins {points} points')
+                self.logger.info(f"{maneuver} executed, player wins {points} points")
                 earned_points += points
         return earned_points
+
     def check_winner(self) -> Optional[str]:
         node_data = self.board.get_node_data(self.current_node)
         return node_data.get('winner')
@@ -97,10 +105,19 @@ class Player:
         return random.choice(possible_moves)
 
 class Game:
-    def __init__(self, name: str, max_turns=100, visualize_3d: bool = False):
+    def __init__(
+        self,
+        name: str,
+        max_turns: int = 100,
+        visualize_3d: bool = False,
+        logger: logging.Logger | None = None,
+    ):
         self.name = name
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.{id(self)}", to_stdout=False
+        )
         self.board = Board(construct_graph())
-        self.game_state = GameState(self.board)
+        self.game_state = GameState(self.board, logger=self.logger)
         self.max_turns = max_turns
         self.turn_count = 0
         self.player1: Optional[Player] = None
@@ -119,7 +136,7 @@ class Game:
             return self.player1
 
     def initialize_game(self, p1_name: str, p2_name: str):
-        print(f'Initializing game: {self.name}')
+        self.logger.info(f"Initializing game: {self.name}")
         self.game_state.initialize()
         self.player1 = Player(p1_name)
         self.player2 = Player(p2_name)
@@ -142,8 +159,8 @@ class Game:
         self.player2.is_top = not self.player1.is_top
         self.player2.is_bottom = not self.player1.is_bottom
 
-        print(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
-        print(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
+        self.logger.info(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
+        self.logger.info(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
 
     def _player_turn_color(self, player: Player) -> str:
         return 'red' if player is self.player1 else 'blue'
@@ -165,18 +182,20 @@ class Game:
                 # if current state is a terminal node, but not associated with a win or loss
                 if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
                     # change to random node, then allow player to play their turn
-                    print('Terminal position encountered. switching to random position ')
+                    self.logger.info("Terminal position encountered. switching to random position ")
                     self.game_state.initialize()
                     return self.play_turn()
                 else:
-                    print(f"No moves available for {self.current_player.name}. Switching players.")
+                    self.logger.info(
+                        f"No moves available for {self.current_player.name}. Switching players."
+                    )
                     # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
                     return self.switch_players()
             else:
                 move = self.current_player.choose_move(possible_moves)
         points, player_tapped, swap_players_positions = self.game_state.process_move(move)
         self.current_player.points += points
-        print(f"{self.current_player.name} performed '{move[1]['description']}'")
+        self.logger.info(f"{self.current_player.name} performed '{move[1]['description']}'")
         next_player = self.choose_other_player(self.current_player)
         winner = self.game_state.check_winner()
         next_turn = (
@@ -192,11 +211,11 @@ class Game:
                 active_turn=next_turn,
             )
         if points>0:
-            print(f'Player earned {points} points for that move')
+            self.logger.info(f"Player earned {points} points for that move")
 
         if player_tapped:
             winning_player = self.choose_other_player(self.current_player)
-            print(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
+            self.logger.info(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
             self.winner = winning_player
             return True
 
@@ -205,7 +224,7 @@ class Game:
             winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
                                               (self.player1.is_bottom and winner == 'bottom')) else self.player2
             self.winner = winning_player
-            print(f"{winning_player.name} won by reaching a winning position!")
+            self.logger.info(f"{winning_player.name} won by reaching a winning position!")
             return True
 
         if swap_players_positions:
@@ -220,18 +239,18 @@ class Game:
     def check_for_points_win(self):
         if self.player1.points > self.player2.points:
             self.winner = self.player1
-            print(f"{self.player1.name} wins!")
+            self.logger.info(f"{self.player1.name} wins!")
         elif self.player2.points > self.player1.points:
             self.winner = self.player2
-            print(f"{self.player2.name} wins!")
+            self.logger.info(f"{self.player2.name} wins!")
         else:
-            print("It's a tie!")
+            self.logger.info("It's a tie!")
 
     def play_game(self):
         max_turns = self.max_turns
         for turn in range(1, max_turns + 1):
             self.turn_count += 1
-            print(f"\nTurn {turn}:")
+            self.logger.info(f"\nTurn {turn}:")
             if self.play_turn():
                 break
         if not self.winner:
@@ -239,26 +258,29 @@ class Game:
         self._print_game_result()
 
     def _print_game_result(self):
-        print("\nGame over! Final scores:")
-        print(f"{self.player1.name}: {self.player1.points}")
-        print(f"{self.player2.name}: {self.player2.points}")
+        self.logger.info("\nGame over! Final scores:")
+        self.logger.info(f"{self.player1.name}: {self.player1.points}")
+        self.logger.info(f"{self.player2.name}: {self.player2.points}")
         if self.visualizer:
             self.visualizer.close()
 
 class Simulation:
-    def __init__(self, num_games: int):
+    def __init__(self, num_games: int, logger: logging.Logger | None = None):
         self.num_games = num_games
         self.games = []
         self.results = []
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.simulation.{id(self)}", to_stdout=False
+        )
 
     def initialize_games(self, num_turns: int = 100):
-        print('Initializing games')
+        self.logger.info("Initializing games")
         self.games = [Game(f"Game_{i}", max_turns= num_turns) for i in range(self.num_games)]
         for game in tqdm(self.games):
             game.initialize_game(f"Player1_{game.name}", f"Player2_{game.name}")
 
     def run_games(self):
-        print('running games')
+        self.logger.info("running games")
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(self.play_single_game, game) for game in self.games]
             for future in tqdm(as_completed(futures)):
@@ -277,7 +299,7 @@ class Simulation:
         }
 
     def agg_results(self) -> List[Dict]:
-        print("SIMULATION RESULTS:")
+        self.logger.info("SIMULATION RESULTS:")
         results = self.results
         player1_wins = 0
         player2_wins = 0
@@ -289,12 +311,18 @@ class Simulation:
                 player2_wins += 1
             else:
                 num_ties += 1
-        print(f'Player 1 won {player1_wins} games out of {len(results)} ({round(player1_wins/len(results),2)})')
-        print(f'Player 2 won {player2_wins} games out of {len(results)} ({round(player2_wins / len(results),2)})')
+        self.logger.info(
+            f"Player 1 won {player1_wins} games out of {len(results)} ({round(player1_wins/len(results),2)})"
+        )
+        self.logger.info(
+            f"Player 2 won {player2_wins} games out of {len(results)} ({round(player2_wins / len(results),2)})"
+        )
         if num_ties > 0:
-            print(f'there were {num_ties} ties')
+            self.logger.info(f"there were {num_ties} ties")
         num_turns = [i['num_turns'] for i in results]
-        print(f'On average, games lasted {np.mean(num_turns)} with a min of {np.minimum(num_turns)} and a max of {np.maximum(num_turns)}')
+        self.logger.info(
+            f"On average, games lasted {np.mean(num_turns)} with a min of {np.minimum(num_turns)} and a max of {np.maximum(num_turns)}"
+        )
 
         return self.results
 
@@ -302,13 +330,14 @@ class Simulation:
         self.games = []
         self.results = []
 
-# Single game example
-game = Game("BJJ Simulation")
-game.initialize_game("Player 1", "Player 2")
-game.play_game()
+if __name__ == "__main__":
+    # Single game example
+    game = Game("BJJ Simulation", logger=build_gameplay_logger("Game.gameplay.demo", to_stdout=True))
+    game.initialize_game("Player 1", "Player 2")
+    game.play_game()
 
-# Parallel multi-threaded example
-# simulation = Simulation(num_games=100)
-# simulation.initialize_games()
-# simulation.run_games(max_turns=200)
-# simulation.agg_results()
+    # Parallel multi-threaded example
+    # simulation = Simulation(num_games=100)
+    # simulation.initialize_games()
+    # simulation.run_games(max_turns=200)
+    # simulation.agg_results()
