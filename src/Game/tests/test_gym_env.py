@@ -234,6 +234,38 @@ def test_masked_actions_are_legal_moves(env):
         )
 
 
+def test_step_moves_to_destination_node(env):
+    """After a step, current_node must be the edge's destination, not its source."""
+    _, info = env.reset()
+    action = _first_valid_action(info)
+    edge_id = env.index_to_id[action]
+    _, expected_dest = env.edge_id_to_nodes[edge_id]
+    env.step(action)
+    assert env.game.game_state.current_node == expected_dest, (
+        f"current_node is {env.game.game_state.current_node} "
+        f"but expected destination {expected_dest}"
+    )
+
+
+def test_position_changes_during_episode(env):
+    """The graph position must actually change as the agent takes actions."""
+    _, info = env.reset(seed=42)
+    initial_node = env.game.game_state.current_node
+    visited_nodes = {initial_node}
+    for _ in range(20):
+        valid = np.where(info["action_mask"])[0]
+        if len(valid) == 0:
+            break
+        action = int(valid[0])
+        _, _, terminated, truncated, info = env.step(action)
+        visited_nodes.add(env.game.game_state.current_node)
+        if terminated or truncated:
+            break
+    assert len(visited_nodes) > 1, (
+        f"Agent stayed at node {initial_node} for the entire episode — "
+        f"position never updated"
+    )
+    
 # ---------------------------------------------------------------------------
 # 5b. Announcement event payloads
 # ---------------------------------------------------------------------------
