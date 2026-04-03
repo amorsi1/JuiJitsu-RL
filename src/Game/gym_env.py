@@ -6,6 +6,9 @@ from typing import List, Tuple, Dict, Optional, Any
 import random
 import time
 
+from render.graph_renderer import MoveRecord
+
+
 POINT_FLASH_DURATION: float = 2.0
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
@@ -52,9 +55,7 @@ class BJJEnv(gym.Env):
             "turn_num": spaces.Box(low=0, high=self.game.max_turns, shape=(1,), dtype=np.int32)
         })
 
-        # Define observation space
-        # Note: SB3 will want a flat obervation space. In the future this may be consolidated into something like:
-
+        # Define vectorized observation space
         self.observation_space = spaces.Box(                                                                                                
         low=np.array([0, -1e4, 0, 0, 0], dtype=np.float32),                                                                             
         high=np.array([self.num_nodes, # Position (Node ID)
@@ -111,6 +112,32 @@ class BJJEnv(gym.Env):
             edge_id = move[1]['id']
             mask[self.id_to_index[edge_id]] = 1
         return mask
+    
+    def _cache_graph_info_before_move(self, move: Tuple[int, Dict], start: int, end: int) -> None:
+            self._ensure_graph_renderer()
+            current_node = self.game.game_state.current_node
+            mover = 0 if self.game.current_player is self.game.player1 else 1
+            swaps = move[1].get('swaps_players', False)
+            p1_is_top_after = self.game.player1.is_top
+            if swaps:
+                p1_is_top_after = not p1_is_top_after
+            node_data = self.game.game_state.board.get_node_data(end)
+            if start != current_node:
+                # Teleport: chosen edge originates from a different node — reset view.
+                self._graph_renderer.set_initial_state(
+                    node_id=end,
+                    description=node_data.get("description", str(end)),
+                    p1_is_top=p1_is_top_after,
+                )
+            else:
+                self._graph_renderer.record_move(MoveRecord(
+                    from_node=current_node,
+                    to_node=end,
+                    mover=mover,
+                    p1_is_top=p1_is_top_after,
+                    turn=self.game.turn_count + 1,
+                    description=node_data.get("description", str(end)),
+                ))
 
     def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
@@ -157,53 +184,34 @@ class BJJEnv(gym.Env):
         move = (end, self.game.board.get_edge_data(start, end))
         self._pending_transition_id = move[1].get('id')
 
-        # Record move for graph renderer before play_turn mutates state
+        # Cache game state before turn is played
         if self.render_mode == "graph":
-            self._ensure_graph_renderer()
-            from render.graph_renderer import MoveRecord
-            current_node = self.game.game_state.current_node
-            mover = 0 if self.game.current_player is self.game.player1 else 1
-            swaps = move[1].get('swaps_players', False)
-            p1_is_top_after = self.game.player1.is_top
-            if swaps:
-                p1_is_top_after = not p1_is_top_after
-            node_data = self.game.game_state.board.get_node_data(end)
-            if start != current_node:
-                # Teleport: chosen edge originates from a different node — reset view.
-                self._graph_renderer.set_initial_state(
-                    node_id=end,
-                    description=node_data.get("description", str(end)),
-                    p1_is_top=p1_is_top_after,
-                )
-            else:
-                self._graph_renderer.record_move(MoveRecord(
-                    from_node=current_node,
-                    to_node=end,
-                    mover=mover,
-                    p1_is_top=p1_is_top_after,
-                    turn=self.game.turn_count + 1,
-                    description=node_data.get("description", str(end)),
-                ))
+            # Record move for graph renderer before play_turn mutates state
+            self._cache_graph_info_before_move(move, start, end)
 
         p1_pts_before = self.game.player1.points
         p2_pts_before = self.game.player2.points
         edge_data = move[1]
-        scoring_moves = [
-            name.capitalize()
-            for name in self.game.board.rewards
-            if edge_data.get(name, False)
-        ]
 
+        # play turn and update game state
         self.game.play_turn(move)
         self.game.turn_count += 1
 
         p1_delta = self.game.player1.points - p1_pts_before
         p2_delta = self.game.player2.points - p2_pts_before
-        label = " + ".join(scoring_moves) if scoring_moves else "Points"
-        if p1_delta > 0:
-            self._point_flash_p1 = (f"{label}! +{p1_delta} pts", time.time())
-        if p2_delta > 0:
-            self._point_flash_p2 = (f"{label}! +{p2_delta} pts", time.time())
+
+        if p1_delta or p2_delta:
+            # one of the player scored points this move
+            scoring_moves = [name.capitalize() for name in self.game.board.rewards
+                             if edge_data.get(name, False)
+            ]
+            label = " + ".join(scoring_moves) if scoring_moves else "Points"
+
+            
+            if p1_delta > 0:
+                self._point_flash_p1 = (f"{label}! +{p1_delta} pts", time.time())
+            if p2_delta > 0:
+                self._point_flash_p2 = (f"{label}! +{p2_delta} pts", time.time())
 
         # terminated: game ended naturally (submission or position win)
         terminated = self.game.winner is not None
