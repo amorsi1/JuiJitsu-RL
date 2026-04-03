@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from unittest.mock import MagicMock
 
 from render.frame_renderer import (
     BG_COLOR,
@@ -20,6 +21,14 @@ from render.frame_renderer import (
     ProjectionResult,
     SegmentDef,
     _depth_shaded_color,
+)
+from render.hud_announcements import (
+    AnnouncementEvent,
+    TELEPORT_FLASH_DURATION,
+    TELEPORT_FLASH_FONT_SIZE,
+    WIN_FLASH_DURATION,
+    WIN_FLASH_FONT_SIZE,
+    build_announcement,
 )
 
 # The 26 original segment pairs (before wrist-finger additions)
@@ -256,3 +265,48 @@ def test_render_rgb_array_invalid_node(rgb_renderer: FrameRenderer) -> None:
     assert isinstance(frame, np.ndarray)
     assert frame.shape == (400, 600, 3)
     assert np.all(frame == 0)
+
+
+def test_build_announcement_winner_color_names() -> None:
+    red = build_announcement(AnnouncementEvent(kind="win", winner_index=0, win_type="submission"))
+    blue = build_announcement(AnnouncementEvent(kind="win", winner_index=1, win_type="position"))
+
+    assert red.text.startswith("Red Player")
+    assert blue.text.startswith("Blue Player")
+
+
+def test_win_announcement_spec() -> None:
+    spec = build_announcement(AnnouncementEvent(kind="win", winner_index=0, win_type="points"))
+
+    assert spec.font_size == WIN_FLASH_FONT_SIZE
+    assert spec.placement == "center"
+    assert spec.panel_style == "celebration"
+    assert spec.hold_seconds == WIN_FLASH_DURATION
+
+
+def test_teleport_announcement_spec() -> None:
+    spec = build_announcement(AnnouncementEvent(kind="teleport"))
+
+    assert spec.font_size == TELEPORT_FLASH_FONT_SIZE
+    assert spec.placement == "upper_third"
+    assert spec.panel_style == "text_only"
+    assert spec.hold_seconds == TELEPORT_FLASH_DURATION
+
+
+def test_rgb_array_renders_announcement_without_hold() -> None:
+    renderer = FrameRenderer(width=600, height=400)
+    renderer._ensure_positions()
+    node_id = _first_available_node(renderer)
+    renderer._hold_display = MagicMock()  # type: ignore[method-assign]
+
+    baseline = renderer.render_frame(node_id, render_mode="rgb_array")
+    win_frame = renderer.render_frame(
+        node_id,
+        render_mode="rgb_array",
+        player_info={},
+        announcement_event=AnnouncementEvent(kind="win", winner_index=0, win_type="submission"),
+    )
+
+    assert isinstance(win_frame, np.ndarray)
+    assert not np.array_equal(win_frame, baseline)
+    renderer._hold_display.assert_not_called()

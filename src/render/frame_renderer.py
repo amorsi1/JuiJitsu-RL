@@ -8,10 +8,19 @@ and 'rgb_array' (numpy array) Gymnasium render modes.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+import time
+from typing import Callable, NamedTuple
 
 import numpy as np
 
+from render.hud_announcements import (
+    AnnouncementEvent,
+    AnnouncementSpec,
+    WIN_PANEL_BORDER,
+    WIN_PANEL_FILL,
+    WIN_PANEL_SHADOW,
+    build_announcement,
+)
 
 # ---------------------------------------------------------------------------
 # Joint name constants (23 joints per player, matching GrappleMap convention)
@@ -155,9 +164,11 @@ def draw_hud_overlay(
     surface: object,
     player_info: dict[str, object] | None,
     width: int,
+    height: int,
     font_large: object,
     font_medium: object,
     font_turn: object,
+    announcement_font_getter: Callable[[int], object],
 ) -> None:
     """Draw the scoreboard HUD onto *surface*.
 
@@ -178,8 +189,6 @@ def draw_hud_overlay(
         font_medium: Initialised pygame Font for position info.
         font_turn: Initialised pygame Font for the turn counter.
     """
-    import pygame
-
     if not player_info:
         return
 
@@ -188,43 +197,27 @@ def draw_hud_overlay(
     description = str(player_info.get("description", ""))
     turn = player_info.get("turn", "?")
 
-    def _blit_outlined(
-        text: str,
-        color: tuple[int, int, int],
-        font: object,
-        x: int,
-        y: int,
-        right_align: bool = False,
-    ) -> int:
-        """Blit text with a 1-px black outline. Returns rendered height."""
-        colored_surf = font.render(text, True, color)  # type: ignore[union-attr]
-        outline_surf = font.render(text, True, _OUTLINE_COLOR)  # type: ignore[union-attr]
-        tw, th = colored_surf.get_size()
-        rx = x - tw if right_align else x
-        for dx, dy in _OUTLINE_OFFSETS:
-            surface.blit(outline_surf, (rx + dx, y + dy))  # type: ignore[union-attr]
-        surface.blit(colored_surf, (rx, y))  # type: ignore[union-attr]
-        return th
-
     # Row 1 — turn number, centred at very top
     turn_text = f"Turn {turn}"
     turn_surf = font_turn.render(turn_text, True, TEXT_COLOR)  # type: ignore[union-attr]
     tw = turn_surf.get_width()
     turn_x = (width - tw) // 2
-    th_turn = _blit_outlined(turn_text, TEXT_COLOR, font_turn, turn_x, HUD_MARGIN)
+    th_turn = _blit_outlined(surface, turn_text, TEXT_COLOR, font_turn, turn_x, HUD_MARGIN)
 
     # Row 2 — position name, centred under turn
     desc_surf = font_medium.render(description, True, TEXT_COLOR)  # type: ignore[union-attr]
     desc_x = (width - desc_surf.get_width()) // 2
     desc_y = HUD_MARGIN + th_turn + 4
-    th_desc = _blit_outlined(description, TEXT_COLOR, font_medium, desc_x, desc_y)
+    th_desc = _blit_outlined(surface, description, TEXT_COLOR, font_medium, desc_x, desc_y)
 
     # Row 3 — large player scores
     score_y = desc_y + th_desc + 4
     th_large = _blit_outlined(
+        surface,
         f"P1: {p1_pts}", PLAYER_COLORS[0], font_large, HUD_MARGIN, score_y,
     )
     _blit_outlined(
+        surface,
         f"P2: {p2_pts}", PLAYER_COLORS[1], font_large,
         width - HUD_MARGIN, score_y, right_align=True,
     )
@@ -233,11 +226,88 @@ def draw_hud_overlay(
     flash_y = score_y + th_large + 3
     p1_flash = player_info.get("p1_flash")
     if p1_flash:
-        _blit_outlined(str(p1_flash), PLAYER_COLORS[0], font_medium, HUD_MARGIN, flash_y)
+        _blit_outlined(surface, str(p1_flash), PLAYER_COLORS[0], font_medium, HUD_MARGIN, flash_y)
     p2_flash = player_info.get("p2_flash")
     if p2_flash:
-        _blit_outlined(str(p2_flash), PLAYER_COLORS[1], font_medium,
+        _blit_outlined(surface, str(p2_flash), PLAYER_COLORS[1], font_medium,
                        width - HUD_MARGIN, flash_y, right_align=True)
+
+    announcement_event = player_info.get("announcement_event")
+    if isinstance(announcement_event, AnnouncementEvent):
+        spec = build_announcement(announcement_event)
+        _draw_announcement(surface, width, height, spec, announcement_font_getter)
+
+
+def _blit_outlined(
+    surface: object,
+    text: str,
+    color: tuple[int, int, int],
+    font: object,
+    x: int,
+    y: int,
+    right_align: bool = False,
+) -> int:
+    """Blit text with a 1-px black outline. Returns rendered height."""
+    colored_surf = font.render(text, True, color)  # type: ignore[union-attr]
+    outline_surf = font.render(text, True, _OUTLINE_COLOR)  # type: ignore[union-attr]
+    tw, th = colored_surf.get_size()
+    rx = x - tw if right_align else x
+    for dx, dy in _OUTLINE_OFFSETS:
+        surface.blit(outline_surf, (rx + dx, y + dy))  # type: ignore[union-attr]
+    surface.blit(colored_surf, (rx, y))  # type: ignore[union-attr]
+    return th
+
+
+def _draw_announcement(
+    surface: object,
+    width: int,
+    height: int,
+    spec: AnnouncementSpec,
+    announcement_font_getter: Callable[[int], object],
+) -> None:
+    import pygame
+
+    font = announcement_font_getter(spec.font_size)
+    y_center = height // 2 if spec.placement == "center" else height // 3
+
+    if spec.panel_style == "text_only":
+        text_surf = font.render(spec.text, True, spec.text_color)  # type: ignore[union-attr]
+        text_x = (width - text_surf.get_width()) // 2
+        text_y = y_center - (text_surf.get_height() // 2)
+        _blit_outlined(surface, spec.text, spec.text_color, font, text_x, text_y)
+        return
+
+    panel_width = int(width * 0.7)
+    panel_padding_x = 24
+    panel_padding_y = 16
+    line_spacing = 6
+    lines = [spec.text]
+    text_width = font.size(spec.text)[0]  # type: ignore[union-attr]
+    max_text_width = panel_width - (panel_padding_x * 2)
+    if text_width > max_text_width and " won by " in spec.text:
+        prefix, suffix = spec.text.split(" won by ", 1)
+        lines = [prefix, f"won by {suffix}"]
+
+    line_heights = [font.size(line)[1] for line in lines]  # type: ignore[union-attr]
+    text_block_height = sum(line_heights) + line_spacing * max(0, len(lines) - 1)
+    panel_height = text_block_height + panel_padding_y * 2
+
+    panel_x = (width - panel_width) // 2
+    panel_y = y_center - (panel_height // 2)
+    panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+    shadow_rect = panel_rect.move(6, 6)
+    corner_radius = 18
+
+    pygame.draw.rect(surface, WIN_PANEL_SHADOW, shadow_rect, border_radius=corner_radius)
+    pygame.draw.rect(surface, WIN_PANEL_FILL, panel_rect, border_radius=corner_radius)
+    pygame.draw.rect(surface, WIN_PANEL_BORDER, panel_rect, width=4, border_radius=corner_radius)
+
+    y = panel_rect.centery - (text_block_height // 2)
+    for i, line in enumerate(lines):
+        line_width = font.size(line)[0]  # type: ignore[union-attr]
+        line_x = panel_rect.centerx - (line_width // 2)
+        _blit_outlined(surface, line, spec.text_color, font, line_x, y)
+        y += line_heights[i] + line_spacing
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +361,7 @@ class FrameRenderer:
         self._font_large: object | None = None
         self._font_medium: object | None = None
         self._font_turn: object | None = None
+        self._announcement_fonts: dict[int, object] = {}
         self._raw_transitions: dict[int, dict] | None = None
         self._frame_cache: dict[int, dict] = {}
         self._last_node_id: int | None = None
@@ -314,6 +385,15 @@ class FrameRenderer:
             self._font_medium = pygame.font.SysFont("monospace", HUD_MEDIUM_FONT_SIZE)
         if self._font_turn is None:
             self._font_turn = pygame.font.SysFont("monospace", HUD_TURN_FONT_SIZE)
+
+    def _get_announcement_font(self, size: int) -> object:
+        import pygame
+
+        if size not in self._announcement_fonts:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            self._announcement_fonts[size] = pygame.font.SysFont("monospace", size, bold=True)
+        return self._announcement_fonts[size]
 
     def _ensure_display(self) -> None:
         """Initialize pygame display for human mode."""
@@ -344,6 +424,20 @@ class FrameRenderer:
         self._frame_cache[transition_id] = parsed
         del self._raw_transitions[transition_id]  # type: ignore[union-attr]
         return parsed
+
+    def _hold_display(self, duration_s: float, fps: int) -> None:
+        """Keep the current frame visible in human mode without redrawing."""
+        import pygame
+
+        if self._clock is None or duration_s <= 0:
+            return
+        stop_at = time.perf_counter() + duration_s
+        while time.perf_counter() < stop_at:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.close()
+                    return
+            self._clock.tick(max(1, fps))  # type: ignore[union-attr]
 
     @staticmethod
     def _interpolate_midpoints(
@@ -476,8 +570,9 @@ class FrameRenderer:
         # HUD overlay (always on top)
         self._ensure_fonts()
         draw_hud_overlay(
-            surface, player_info, self._width,
+            surface, player_info, self._width, self._height,
             self._font_large, self._font_medium, self._font_turn,
+            self._get_announcement_font,
         )
 
     def _draw_frame(
@@ -496,6 +591,7 @@ class FrameRenderer:
         render_mode: str,
         fps: int = 2,
         player_info: dict[str, object] | None = None,
+        announcement_event: AnnouncementEvent | None = None,
     ) -> np.ndarray | None:
         """Render the current position as stick figures.
 
@@ -504,6 +600,9 @@ class FrameRenderer:
         import pygame
 
         self._ensure_positions()
+        if announcement_event is not None:
+            player_info = dict(player_info or {})
+            player_info["announcement_event"] = announcement_event
 
         if node_id not in self._positions:  # type: ignore[operator]
             return np.zeros((self._height, self._width, 3), dtype=np.uint8) if render_mode == "rgb_array" else None
@@ -518,6 +617,10 @@ class FrameRenderer:
             self._draw_frame(self._screen, node_id, player_info)
             pygame.display.flip()
             self._clock.tick(fps)  # type: ignore[union-attr]
+            announcement = player_info.get("announcement_event") if player_info else None
+            if isinstance(announcement, AnnouncementEvent):
+                spec = build_announcement(announcement)
+                self._hold_display(spec.hold_seconds, fps)
             return None
 
         # rgb_array — render to offscreen surface
@@ -534,6 +637,7 @@ class FrameRenderer:
         render_mode: str,
         fps: int = 15,
         player_info: dict[str, object] | None = None,
+        announcement_event: AnnouncementEvent | None = None,
     ) -> list[np.ndarray] | None:
         """Render a smooth transition animation.
 
@@ -544,10 +648,19 @@ class FrameRenderer:
         import pygame
 
         self._ensure_positions()
+        if announcement_event is not None:
+            player_info = dict(player_info or {})
+            player_info["announcement_event"] = announcement_event
         transition = self._get_transition(transition_id)
 
         if transition is None:
-            result = self.render_frame(node_id, render_mode, fps, player_info)
+            result = self.render_frame(
+                node_id,
+                render_mode,
+                fps,
+                player_info,
+                announcement_event=announcement_event,
+            )
             return [result] if render_mode == "rgb_array" and result is not None else result
 
         frames = list(transition['frames'])
@@ -574,6 +687,10 @@ class FrameRenderer:
                 self._draw_players(self._screen, frame_data, player_info)
                 pygame.display.flip()
                 self._clock.tick(fps)  # type: ignore[union-attr]
+            announcement = player_info.get("announcement_event") if player_info else None
+            if isinstance(announcement, AnnouncementEvent):
+                spec = build_announcement(announcement)
+                self._hold_display(spec.hold_seconds, fps)
         else:  # rgb_array
             output_frames = []
             for frame_data in frames:
@@ -597,3 +714,4 @@ class FrameRenderer:
             self._font_large = None
             self._font_medium = None
             self._font_turn = None
+            self._announcement_fonts = {}
