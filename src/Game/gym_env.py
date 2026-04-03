@@ -2,11 +2,12 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from .play_game import Game, Board, GameState, Player, tqdm
-from typing import List, Tuple, Dict, Optional, Any
+from typing import Any, Dict, List, Tuple
 import random
 import time
 
 from render.graph_renderer import MoveRecord
+from render.hud_announcements import AnnouncementEvent, WinType
 
 
 POINT_FLASH_DURATION: float = 2.0
@@ -20,6 +21,8 @@ class BJJEnv(gym.Env):
         self._renderer: object | None = None  # lazy FrameRenderer
         self._graph_renderer: object | None = None  # lazy GraphRenderer
         self._pending_transition_id: int | None = None
+        self._pending_transition_target_node: int | None = None
+        self._pending_announcement_event: AnnouncementEvent | None = None
         self._point_flash_p1: tuple[str, float] | None = None  # (message, timestamp)
         self._point_flash_p2: tuple[str, float] | None = None
 
@@ -113,31 +116,45 @@ class BJJEnv(gym.Env):
             mask[self.id_to_index[edge_id]] = 1
         return mask
     
-    def _cache_graph_info_before_move(self, move: Tuple[int, Dict], start: int, end: int) -> None:
-            self._ensure_graph_renderer()
-            current_node = self.game.game_state.current_node
-            mover = 0 if self.game.current_player is self.game.player1 else 1
-            swaps = move[1].get('swaps_players', False)
-            p1_is_top_after = self.game.player1.is_top
-            if swaps:
-                p1_is_top_after = not p1_is_top_after
-            node_data = self.game.game_state.board.get_node_data(end)
-            if start != current_node:
-                # Teleport: chosen edge originates from a different node — reset view.
-                self._graph_renderer.set_initial_state(
-                    node_id=end,
-                    description=node_data.get("description", str(end)),
-                    p1_is_top=p1_is_top_after,
-                )
-            else:
-                self._graph_renderer.record_move(MoveRecord(
-                    from_node=current_node,
-                    to_node=end,
-                    mover=mover,
-                    p1_is_top=p1_is_top_after,
-                    turn=self.game.turn_count + 1,
-                    description=node_data.get("description", str(end)),
-                ))
+    def _update_graph_history_after_step(
+        self,
+        pre_turn_node: int,
+        selected_end: int,
+        mover: int,
+        p1_is_top_after_move: bool,
+        announcement_event: AnnouncementEvent | None,
+    ) -> None:
+        self._ensure_graph_renderer()
+        if announcement_event is not None and announcement_event.kind == "teleport":
+            node = self.game.game_state.current_node
+            node_data = self.game.game_state.board.get_node_data(node)
+            self._graph_renderer.set_initial_state(
+                node_id=node,
+                description=node_data.get("description", str(node)),
+                p1_is_top=self.game.player1.is_top,
+            )
+            return
+
+        node_data = self.game.game_state.board.get_node_data(selected_end)
+        self._graph_renderer.record_move(MoveRecord(
+            from_node=pre_turn_node,
+            to_node=selected_end,
+            mover=mover,
+            p1_is_top=p1_is_top_after_move,
+            turn=self.game.turn_count,
+            description=node_data.get("description", str(selected_end)),
+        ))
+
+    def _classify_win_type(
+        self,
+        edge_data: dict[str, object],
+        points_win_triggered: bool,
+    ) -> WinType:
+        if edge_data.get("tap", False):
+            return "submission"
+        if points_win_triggered:
+            return "points"
+        return "position"
 
     def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
@@ -156,6 +173,8 @@ class BJJEnv(gym.Env):
             # Reinitialize if there are no valid moves for the starting position
             self.game.initialize_game("Player1", "Player2")
         self._pending_transition_id = None
+        self._pending_transition_target_node = None
+        self._pending_announcement_event = None
         self._point_flash_p1 = None
         self._point_flash_p2 = None
 
@@ -180,14 +199,17 @@ class BJJEnv(gym.Env):
             # Invalid action, end turn without making a move
             self.game.switch_players()
             return self._get_obs(), -1, False, False, {}
-        (start, end) = self.edge_id_to_nodes[edge_id]
-        move = (end, self.game.board.get_edge_data(start, end))
+        (start, selected_end) = self.edge_id_to_nodes[edge_id]
+        move = (selected_end, self.game.board.get_edge_data(start, selected_end))
         self._pending_transition_id = move[1].get('id')
+        self._pending_transition_target_node = selected_end
 
-        # Cache game state before turn is played
-        if self.render_mode == "graph":
-            # Record move for graph renderer before play_turn mutates state
-            self._cache_graph_info_before_move(move, start, end)
+        pre_turn_node = self.game.game_state.current_node
+        mover = 0 if self.game.current_player is self.game.player1 else 1
+        p1_is_top_after_move = self.game.player1.is_top
+        if move[1].get("swaps_players", False):
+            p1_is_top_after_move = not p1_is_top_after_move
+        announcement_event: AnnouncementEvent | None = None
 
         p1_pts_before = self.game.player1.points
         p2_pts_before = self.game.player2.points
@@ -217,20 +239,42 @@ class BJJEnv(gym.Env):
         terminated = self.game.winner is not None
         # truncated: turn limit reached; check points to determine a winner if possible
         truncated = (not terminated) and (self.game.turn_count >= self.game.max_turns)
+        points_win_triggered = False
 
         if truncated:
             self.game.check_for_points_win()
+            points_win_triggered = self.game.winner is not None
             if self.game.winner is not None:
                 terminated = True
                 truncated = False
+
+        if self.game.winner is not None:
+            winner_index = 0 if self.game.winner is self.game.player1 else 1
+            announcement_event = AnnouncementEvent(
+                kind="win",
+                winner_index=winner_index,
+                win_type=self._classify_win_type(edge_data, points_win_triggered),
+            )
+        elif self.game.game_state.current_node != selected_end:
+            announcement_event = AnnouncementEvent(kind="teleport")
+
+        if self.render_mode == "graph":
+            self._update_graph_history_after_step(
+                pre_turn_node=pre_turn_node,
+                selected_end=selected_end,
+                mover=mover,
+                p1_is_top_after_move=p1_is_top_after_move,
+                announcement_event=announcement_event,
+            )
 
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
 
         info = {"action_mask": self._get_action_mask()}
 
+        self._pending_announcement_event = announcement_event
         if self.render_mode in ("human", "graph"):
-            self.render()
+            self.render(announcement_event=announcement_event)
 
         return obs, reward, terminated, truncated, info
 
@@ -259,7 +303,7 @@ class BJJEnv(gym.Env):
             from render.graph_renderer import GraphRenderer
             self._graph_renderer = GraphRenderer(source_graph=self.G)
 
-    def _get_player_info(self) -> dict[str, object]:
+    def _get_player_info(self, announcement_event: AnnouncementEvent | None = None) -> dict[str, object]:
         """Build display-info dict for the renderer overlay text."""
         node = self.game.game_state.current_node
         node_data = self.game.game_state.board.get_node_data(node)
@@ -268,6 +312,7 @@ class BJJEnv(gym.Env):
             "p1_points": self.game.player1.points,
             "p2_points": self.game.player2.points,
             "turn": self.game.turn_count,
+            "announcement_event": announcement_event,
         }
         now = time.time()
         if self._point_flash_p1:
@@ -282,38 +327,70 @@ class BJJEnv(gym.Env):
                 self._point_flash_p2 = None
         return info
 
-    def render(self) -> np.ndarray | list[np.ndarray] | str | None:
+    def render(self, announcement_event: AnnouncementEvent | None = None) -> np.ndarray | list[np.ndarray] | str | None:
         """Render the environment according to render_mode."""
+        if announcement_event is None:
+            announcement_event = self._pending_announcement_event
         if self.render_mode is None:
             return None
         if self.render_mode == "ansi":
             return self._render_ansi()
         if self.render_mode == "graph":
             self._ensure_graph_renderer()
-            return self._graph_renderer.render_graph(
+            result = self._graph_renderer.render_graph(
                 render_mode="human",
                 fps=self.metadata["render_fps"],
-                player_info=self._get_player_info(),
+                player_info=self._get_player_info(announcement_event),
+                announcement_event=announcement_event,
             )
+            self._pending_announcement_event = None
+            return result
+
         if self._pending_transition_id is not None and self.render_mode in ("human", "rgb_array"):
             self._ensure_renderer()
-            result = self._renderer.render_transition(  # type: ignore[union-attr]
+            target_node = self._pending_transition_target_node
+            if target_node is None:
+                target_node = self.game.game_state.current_node
+            transition_frames = self._renderer.render_transition(  # type: ignore[union-attr]
                 transition_id=self._pending_transition_id,
-                node_id=self.game.game_state.current_node,
+                node_id=target_node,
                 render_mode=self.render_mode,
                 fps=self.metadata["render_transition_fps"],
-                player_info=self._get_player_info(),
+                player_info=self._get_player_info(None),
             )
             self._pending_transition_id = None
-            return result
+            self._pending_transition_target_node = None
+
+            if announcement_event is None:
+                self._pending_announcement_event = None
+                return transition_frames
+
+            final_frame = self._renderer.render_frame(  # type: ignore[union-attr]
+                node_id=self.game.game_state.current_node,
+                render_mode=self.render_mode,
+                fps=self.metadata["render_fps"],
+                player_info=self._get_player_info(announcement_event),
+                announcement_event=announcement_event,
+            )
+            self._pending_announcement_event = None
+            if self.render_mode == "rgb_array":
+                if transition_frames is None:
+                    return [final_frame] if final_frame is not None else []
+                assert isinstance(transition_frames, list)
+                return transition_frames + ([final_frame] if final_frame is not None else [])
+            return final_frame
+
         # "human" or "rgb_array"
         self._ensure_renderer()
-        return self._renderer.render_frame(  # type: ignore[union-attr]
+        result = self._renderer.render_frame(  # type: ignore[union-attr]
             node_id=self.game.game_state.current_node,
             render_mode=self.render_mode,
             fps=self.metadata["render_fps"],
-            player_info=self._get_player_info(),
+            player_info=self._get_player_info(announcement_event),
+            announcement_event=announcement_event,
         )
+        self._pending_announcement_event = None
+        return result
 
     def _render_ansi(self) -> str:
         """Return a text representation of the current game state."""

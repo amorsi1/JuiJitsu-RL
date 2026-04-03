@@ -3,6 +3,7 @@ import pytest
 from gymnasium.utils.env_checker import check_env
 
 from Game.gym_env import BJJEnv, get_masked_q_values, state_to_index
+from render.hud_announcements import AnnouncementEvent
 
 
 @pytest.fixture(scope="module")
@@ -231,6 +232,124 @@ def test_masked_actions_are_legal_moves(env):
             f"Action index {idx} (edge_id={edge_id}) is unmasked "
             f"but not in legal moves for is_top={is_top}, is_bottom={is_bottom}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 5b. Announcement event payloads
+# ---------------------------------------------------------------------------
+
+
+def test_submission_win_emits_win_announcement() -> None:
+    env = BJJEnv()
+    try:
+        _, info = env.reset()
+        action = _first_valid_action(info)
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        edge_data = env.game.board.get_edge_data(start, end)
+
+        original_tap = edge_data.get("tap", False)
+        edge_data["tap"] = True
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0]
+            env.game.winner = env.game.player1
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+        env.step(action)
+
+        event = env._pending_announcement_event
+        assert event == AnnouncementEvent(kind="win", winner_index=0, win_type="submission")
+        edge_data["tap"] = original_tap
+    finally:
+        env.close()
+
+
+def test_turn_limit_points_win_emits_points_announcement() -> None:
+    env = BJJEnv()
+    try:
+        _, info = env.reset()
+        action = _first_valid_action(info)
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        edge_data = env.game.board.get_edge_data(start, end)
+        edge_data["tap"] = False
+        env.game.max_turns = 1
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0]
+            env.game.winner = None
+
+        def _fake_check_for_points_win() -> None:
+            env.game.winner = env.game.player2
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+        env.game.check_for_points_win = _fake_check_for_points_win  # type: ignore[method-assign]
+        env.step(action)
+
+        event = env._pending_announcement_event
+        assert event == AnnouncementEvent(kind="win", winner_index=1, win_type="points")
+    finally:
+        env.close()
+
+
+def test_position_win_emits_position_announcement() -> None:
+    env = BJJEnv()
+    try:
+        _, info = env.reset()
+        action = _first_valid_action(info)
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        edge_data = env.game.board.get_edge_data(start, end)
+        edge_data["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0]
+            env.game.winner = env.game.player2
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+        env.step(action)
+
+        event = env._pending_announcement_event
+        assert event == AnnouncementEvent(kind="win", winner_index=1, win_type="position")
+    finally:
+        env.close()
+
+
+def test_non_winning_reset_emits_teleport_announcement() -> None:
+    env = BJJEnv()
+    try:
+        _, info = env.reset()
+        action = _first_valid_action(info)
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        edge_data = env.game.board.get_edge_data(start, end)
+        edge_data["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0] + 1
+            env.game.winner = None
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+        env.step(action)
+
+        event = env._pending_announcement_event
+        assert event == AnnouncementEvent(kind="teleport")
+    finally:
+        env.close()
+
+
+def test_event_payload_excludes_render_style_fields() -> None:
+    env = BJJEnv()
+    try:
+        payload = AnnouncementEvent(kind="teleport")
+        info = env._get_player_info(payload)
+        event = info["announcement_event"]
+        assert isinstance(event, AnnouncementEvent)
+        for field in ("hold_seconds", "font_size", "text_color", "placement"):
+            assert not hasattr(event, field)
+    finally:
+        env.close()
 
 
 # ---------------------------------------------------------------------------

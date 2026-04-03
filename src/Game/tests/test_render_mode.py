@@ -19,6 +19,7 @@ import pytest
 
 import Game  # noqa: F401 -- side-effect import: triggers __init__.py registration
 from Game.gym_env import BJJEnv
+from render.hud_announcements import AnnouncementEvent
 
 
 # ---------------------------------------------------------------------------
@@ -373,12 +374,12 @@ def test_step_smoke_all_render_modes(render_mode: str | None) -> None:
 
 
 def test_teleport_calls_set_initial_state() -> None:
-    """When step() detects a teleport (edge source != current node), set_initial_state is called."""
+    """When step() ends on a different node than the selected move target, set_initial_state is called."""
     from unittest.mock import MagicMock
 
     env = BJJEnv(render_mode="graph")
     try:
-        obs, info = env.reset()
+        _obs, info = env.reset()
 
         # Replace graph renderer with a mock after reset initialises it
         mock_gr = MagicMock()
@@ -391,17 +392,156 @@ def test_teleport_calls_set_initial_state() -> None:
 
         # Find (start, end) for this action
         edge_id = env.index_to_id[action]
-        start, _end = env.edge_id_to_nodes[edge_id]
+        start, end = env.edge_id_to_nodes[edge_id]
+        env.game.board.get_edge_data(start, end)["tap"] = False
 
-        # Force current_node to differ from start to simulate a teleport
-        different_node = (start + 1) % env.num_nodes
-        if different_node == start:
-            different_node = (start + 2) % env.num_nodes
-        env.game.game_state.current_node = different_node
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0] + 1
+            env.game.winner = None
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
 
         env.step(action)
 
         mock_gr.set_initial_state.assert_called()
         mock_gr.record_move.assert_not_called()
+    finally:
+        env.close()
+
+
+@patch("render.frame_renderer.FrameRenderer")
+def test_human_mode_win_step_renders_final_frame_with_win_event(mock_renderer_cls: MagicMock) -> None:
+    mock_renderer = MagicMock()
+    mock_renderer.render_frame.return_value = None
+    mock_renderer.render_transition.return_value = None
+    mock_renderer_cls.return_value = mock_renderer
+
+    env = BJJEnv(render_mode="human")
+    try:
+        _, info = env.reset()
+        mock_renderer.render_frame.reset_mock()
+        mock_renderer.render_transition.reset_mock()
+
+        action = int(np.where(info["action_mask"])[0][0])
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        env.game.board.get_edge_data(start, end)["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0]
+            env.game.winner = env.game.player1
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+
+        env.step(action)
+
+        mock_renderer.render_transition.assert_called_once()
+        assert mock_renderer.render_frame.called
+        kwargs = mock_renderer.render_frame.call_args.kwargs
+        event = kwargs.get("announcement_event")
+        assert event == AnnouncementEvent(kind="win", winner_index=0, win_type="position")
+    finally:
+        env.close()
+
+
+@patch("render.frame_renderer.FrameRenderer")
+def test_human_mode_teleport_step_renders_final_frame_with_teleport_event(mock_renderer_cls: MagicMock) -> None:
+    mock_renderer = MagicMock()
+    mock_renderer.render_frame.return_value = None
+    mock_renderer.render_transition.return_value = None
+    mock_renderer_cls.return_value = mock_renderer
+
+    env = BJJEnv(render_mode="human")
+    try:
+        _, info = env.reset()
+        mock_renderer.render_frame.reset_mock()
+        mock_renderer.render_transition.reset_mock()
+
+        action = int(np.where(info["action_mask"])[0][0])
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        env.game.board.get_edge_data(start, end)["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0] + 1
+            env.game.winner = None
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+
+        env.step(action)
+
+        mock_renderer.render_transition.assert_called_once()
+        assert mock_renderer.render_frame.called
+        kwargs = mock_renderer.render_frame.call_args.kwargs
+        event = kwargs.get("announcement_event")
+        assert event == AnnouncementEvent(kind="teleport")
+    finally:
+        env.close()
+
+
+@patch("render.graph_renderer.GraphRenderer")
+def test_graph_mode_teleport_step_resets_and_passes_event(mock_graph_cls: MagicMock) -> None:
+    mock_graph = MagicMock()
+    mock_graph.render_graph.return_value = None
+    mock_graph_cls.return_value = mock_graph
+
+    env = BJJEnv(render_mode="graph")
+    try:
+        _, info = env.reset()
+        mock_graph.set_initial_state.reset_mock()
+        mock_graph.record_move.reset_mock()
+        mock_graph.render_graph.reset_mock()
+
+        action = int(np.where(info["action_mask"])[0][0])
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        env.game.board.get_edge_data(start, end)["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0] + 2
+            env.game.winner = None
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+
+        env.step(action)
+
+        mock_graph.set_initial_state.assert_called_once()
+        mock_graph.record_move.assert_not_called()
+        kwargs = mock_graph.render_graph.call_args.kwargs
+        assert kwargs["announcement_event"] == AnnouncementEvent(kind="teleport")
+    finally:
+        env.close()
+
+
+@patch("render.graph_renderer.GraphRenderer")
+def test_graph_mode_win_step_passes_win_event(mock_graph_cls: MagicMock) -> None:
+    mock_graph = MagicMock()
+    mock_graph.render_graph.return_value = None
+    mock_graph_cls.return_value = mock_graph
+
+    env = BJJEnv(render_mode="graph")
+    try:
+        _, info = env.reset()
+        mock_graph.render_graph.reset_mock()
+
+        action = int(np.where(info["action_mask"])[0][0])
+        edge_id = env.index_to_id[action]
+        start, end = env.edge_id_to_nodes[edge_id]
+        env.game.board.get_edge_data(start, end)["tap"] = False
+
+        def _fake_play_turn(move: tuple[int, dict[str, object]]) -> None:
+            env.game.game_state.current_node = move[0]
+            env.game.winner = env.game.player2
+
+        env.game.play_turn = _fake_play_turn  # type: ignore[method-assign]
+
+        env.step(action)
+
+        kwargs = mock_graph.render_graph.call_args.kwargs
+        assert kwargs["announcement_event"] == AnnouncementEvent(
+            kind="win",
+            winner_index=1,
+            win_type="position",
+        )
     finally:
         env.close()
