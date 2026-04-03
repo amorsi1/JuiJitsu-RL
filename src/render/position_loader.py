@@ -78,6 +78,36 @@ def load_transition_frames(transitions_path: str = None) -> Dict[int, dict]:
     return transition_data
 
 
+def load_raw_transition_index(transitions_path: str | None = None) -> dict[int, dict]:
+    """Load transitions.json and index by ID without parsing frame data.
+
+    Returns raw JSON dicts keyed by transition ID. Frame parsing is deferred
+    to `parse_transition()` for on-demand use.
+    """
+    if transitions_path is None:
+        transitions_path = os.path.join(DATA_DIR, 'transitions.json')
+    with open(transitions_path, 'r') as f:
+        transitions = json.load(f)
+    return {t['id']: t for t in transitions if 'frames' in t}
+
+
+def parse_transition(raw: dict) -> dict:
+    """Parse a single raw transition dict into the standard format.
+
+    Returns {'frames': [...], 'detailed': bool, 'from_node': int, 'to_node': int,
+             'from_reo': dict, 'to_reo': dict}.
+    """
+    detailed = 'detailed' in raw.get('properties', [])
+    return {
+        'frames': [_parse_frame(frame) for frame in raw['frames']],
+        'detailed': detailed,
+        'from_node': raw['from']['node'],
+        'to_node': raw['to']['node'],
+        'from_reo': _parse_reo(raw['from']['reo']),
+        'to_reo': _parse_reo(raw['to']['reo']),
+    }
+
+
 def load_all(nodes_path: str = None, transitions_path: str = None):
     """Load both positions and transition frames."""
     return load_positions(nodes_path), load_transition_frames(transitions_path)

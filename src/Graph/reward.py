@@ -15,8 +15,6 @@ def load_json(fpath):
 def add_terminal_win_states(G, base_path=None):
     if base_path is None:
         base_path = GRAPH_FILES_DIR
-
-    print(base_path)
     
     json_path = os.path.join(base_path, 'terminal_node_winstate.json')
     """add annotations of which nodes are considered a win """
