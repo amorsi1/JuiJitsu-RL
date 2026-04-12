@@ -5,7 +5,16 @@ studies are configured correctly, hyperparameter ranges are honoured, JSON
 artifacts are written, and the full orchestration pipeline returns a trained
 MaskablePPO model.
 
-Training timesteps are intentionally tiny (256–512) so these run in CI.
+Performance strategy
+--------------------
+The ``objective()`` function normally uses 10 000 training steps per trial.
+Tests use ``make_objective(trial_timesteps=256)`` and pass ``trial_timesteps=256``
+to ``run_hpo()`` / ``train_with_hpo()`` so each trial completes in seconds.
+
+Module-scoped fixtures share expensive computation across all tests that need it:
+  - ``hpo_study``: 2 HPO trials, used by tests 5-8
+  - ``run_hpo_result``: run_hpo() output, used by tests 9-10
+  - ``hpo_run``: train_with_hpo() output, used by tests 11-13
 """
 
 import json
@@ -17,23 +26,60 @@ from optuna.samplers import TPESampler
 from optuna.study import StudyDirection
 from sb3_contrib import MaskablePPO
 
-from Game.hpo import objective, run_hpo, train_with_hpo
+from Game.hpo import make_objective, objective, run_hpo, train_with_hpo
 
 # Suppress noisy Optuna progress logs for the entire module.
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
-# Module-scoped fixture — 2 trials in-memory, shared across tests
+# Module-scoped fixtures — run expensive training once per test session
 # ---------------------------------------------------------------------------
+
+_TRIAL_TIMESTEPS = 256  # tiny budget; fast but end-to-end real training
 
 
 @pytest.fixture(scope="module")
 def hpo_study() -> optuna.Study:
-    """Run 2 HPO trials once and reuse the study object across all tests."""
+    """Run 2 HPO trials once and reuse the study object across tests 5-8."""
     study = optuna.create_study(direction="maximize", sampler=TPESampler(seed=0))
-    study.optimize(objective, n_trials=2)
+    study.optimize(make_objective(trial_timesteps=_TRIAL_TIMESTEPS), n_trials=2)
     return study
+
+
+@pytest.fixture(scope="module")
+def run_hpo_result(tmp_path_factory: pytest.TempPathFactory) -> dict:
+    """Run run_hpo() once and share output across tests 9-10."""
+    base = tmp_path_factory.mktemp("run_hpo")
+    study = run_hpo(
+        n_trials=2,
+        study_name="test_run_hpo",
+        storage=None,
+        output_dir=base,
+        seed=0,
+        trial_timesteps=_TRIAL_TIMESTEPS,
+    )
+    return {"study": study, "output_dir": base}
+
+
+@pytest.fixture(scope="module")
+def hpo_run(tmp_path_factory: pytest.TempPathFactory) -> dict:
+    """Run train_with_hpo() once and share result across tests 11-13."""
+    base = tmp_path_factory.mktemp("hpo_run")
+    save_path = base / "model"
+    output_dir = base / "hpo_out"
+    result = train_with_hpo(
+        n_trials=1,
+        total_timesteps=512,
+        trial_timesteps=_TRIAL_TIMESTEPS,
+        seed=0,
+        save_path=save_path,
+        tensorboard_log=None,
+        output_dir=output_dir,
+        study_name="test_hpo",
+        storage=None,
+    )
+    return {"result": result, "save_path": save_path, "output_dir": output_dir}
 
 
 # ---------------------------------------------------------------------------
@@ -158,12 +204,10 @@ def test_best_params_value_types(hpo_study: optuna.Study) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_hpo_saves_best_params_json(tmp_path: pytest.TempPathFactory) -> None:
+def test_run_hpo_saves_best_params_json(run_hpo_result: dict) -> None:
     """run_hpo() must write best_params.json containing 'best_value' and 'best_params' keys."""
-    run_hpo(n_trials=2, study_name="test", storage=None, output_dir=tmp_path, seed=0)
-
-    json_path = tmp_path / "best_params.json"
-    assert json_path.exists(), f"best_params.json not found in {tmp_path}"
+    json_path = run_hpo_result["output_dir"] / "best_params.json"
+    assert json_path.exists(), f"best_params.json not found in {run_hpo_result['output_dir']}"
 
     with json_path.open() as f:
         data = json.load(f)
@@ -177,11 +221,10 @@ def test_run_hpo_saves_best_params_json(tmp_path: pytest.TempPathFactory) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_run_hpo_returns_study_object(tmp_path: pytest.TempPathFactory) -> None:
+def test_run_hpo_returns_study_object(run_hpo_result: dict) -> None:
     """run_hpo() must return an optuna.Study instance."""
-    result = run_hpo(n_trials=2, study_name="test", storage=None, output_dir=tmp_path, seed=0)
-    assert isinstance(result, optuna.Study), (
-        f"run_hpo() returned {type(result).__name__}, expected optuna.Study"
+    assert isinstance(run_hpo_result["study"], optuna.Study), (
+        f"run_hpo() returned {type(run_hpo_result['study']).__name__}, expected optuna.Study"
     )
 
 
@@ -190,18 +233,9 @@ def test_run_hpo_returns_study_object(tmp_path: pytest.TempPathFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_train_with_hpo_returns_model(tmp_path: pytest.TempPathFactory) -> None:
+def test_train_with_hpo_returns_model(hpo_run: dict) -> None:
     """train_with_hpo() must return a 3-tuple whose first element is MaskablePPO."""
-    result = train_with_hpo(
-        n_trials=1,
-        total_timesteps=512,
-        seed=0,
-        save_path=tmp_path / "model",
-        tensorboard_log=None,
-        output_dir=tmp_path / "hpo_out",
-        study_name="test_hpo",
-        storage=None,
-    )
+    result = hpo_run["result"]
     assert isinstance(result, tuple), (
         f"train_with_hpo() returned {type(result).__name__}, expected tuple"
     )
@@ -217,21 +251,10 @@ def test_train_with_hpo_returns_model(tmp_path: pytest.TempPathFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_train_with_hpo_saves_model(tmp_path: pytest.TempPathFactory) -> None:
+def test_train_with_hpo_saves_model(hpo_run: dict) -> None:
     """train_with_hpo() must save a .zip model file at save_path."""
-    train_with_hpo(
-        n_trials=1,
-        total_timesteps=512,
-        seed=0,
-        save_path=tmp_path / "model",
-        tensorboard_log=None,
-        output_dir=tmp_path / "hpo_out",
-        study_name="test_hpo",
-        storage=None,
-    )
-    assert (tmp_path / "model.zip").exists(), (
-        f"model.zip not found in {tmp_path} after train_with_hpo()"
-    )
+    model_zip = hpo_run["save_path"].with_suffix(".zip")
+    assert model_zip.exists(), f"model.zip not found at {model_zip} after train_with_hpo()"
 
 
 # ---------------------------------------------------------------------------
@@ -239,22 +262,10 @@ def test_train_with_hpo_saves_model(tmp_path: pytest.TempPathFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_train_with_hpo_saves_best_params_json(tmp_path: pytest.TempPathFactory) -> None:
+def test_train_with_hpo_saves_best_params_json(hpo_run: dict) -> None:
     """train_with_hpo() must write best_params.json with 'best_value' and 'best_params' keys."""
-    output_dir = tmp_path / "hpo_out"
-    train_with_hpo(
-        n_trials=1,
-        total_timesteps=512,
-        seed=0,
-        save_path=tmp_path / "model",
-        tensorboard_log=None,
-        output_dir=output_dir,
-        study_name="test_hpo",
-        storage=None,
-    )
-
-    json_path = output_dir / "best_params.json"
-    assert json_path.exists(), f"best_params.json not found in {output_dir}"
+    json_path = hpo_run["output_dir"] / "best_params.json"
+    assert json_path.exists(), f"best_params.json not found in {hpo_run['output_dir']}"
 
     with json_path.open() as f:
         data = json.load(f)

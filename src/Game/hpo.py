@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Callable
 
 import optuna
 from optuna.pruners import MedianPruner
@@ -11,37 +12,48 @@ from sb3_contrib import MaskablePPO
 from Game.train_sb3 import train
 
 
-def objective(trial: optuna.Trial) -> float:
-    """Optuna objective function that samples hyperparameters and runs a short trial.
+def make_objective(trial_timesteps: int = 10_000) -> Callable[[optuna.Trial], float]:
+    """Create an Optuna objective closure with a configurable training budget.
+
+    Returns a function compatible with ``study.optimize()``.  Using a factory
+    rather than a bare function lets callers (and tests) control the per-trial
+    timestep budget without monkey-patching globals.
 
     Args:
-        trial: Optuna trial object used to sample hyperparameter values.
+        trial_timesteps: Environment steps used for each short HPO trial run.
 
     Returns:
-        Mean reward from the short training run.
+        Objective function with signature ``(trial: optuna.Trial) -> float``.
     """
-    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
-    n_steps = trial.suggest_categorical("n_steps", [512, 1024, 2048])
-    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256])
-    gamma = trial.suggest_float("gamma", 0.95, 0.999)
+    def _objective(trial: optuna.Trial) -> float:
+        learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
+        n_steps = trial.suggest_categorical("n_steps", [512, 1024, 2048])
+        batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256])
+        gamma = trial.suggest_float("gamma", 0.95, 0.999)
 
-    _, mean_reward, _ = train(
-        total_timesteps=10_000,
-        learning_rate=learning_rate,
-        n_steps=n_steps,
-        batch_size=batch_size,
-        gamma=gamma,
-        verbose=0,
-        tensorboard_log=None,
-        eval_freq=999_999,
-        n_eval_episodes=5,
-        eval_render_mode=None,
-        eval_gameplay_log_path=None,
-        save_path=Path(f"/tmp/hpo_trial_{trial.number}"),
-        checkpoint_dir=Path("/tmp/hpo_checkpoints"),
-        best_model_dir=Path("/tmp/hpo_best"),
-    )
-    return mean_reward
+        _, mean_reward, _ = train(
+            total_timesteps=trial_timesteps,
+            learning_rate=learning_rate,
+            n_steps=n_steps,
+            batch_size=batch_size,
+            gamma=gamma,
+            verbose=0,
+            tensorboard_log=None,
+            eval_freq=999_999,
+            n_eval_episodes=5,
+            eval_render_mode=None,
+            eval_gameplay_log_path=None,
+            save_path=Path(f"/tmp/hpo_trial_{trial.number}"),
+            checkpoint_dir=Path("/tmp/hpo_checkpoints"),
+            best_model_dir=Path("/tmp/hpo_best"),
+        )
+        return mean_reward
+
+    return _objective
+
+
+# Module-level convenience — preserves the original public API.
+objective = make_objective()
 
 
 def run_hpo(
@@ -50,6 +62,7 @@ def run_hpo(
     storage: str | None,
     output_dir: Path,
     seed: int,
+    trial_timesteps: int = 10_000,
 ) -> optuna.Study:
     """Create an Optuna study and run hyperparameter optimisation.
 
@@ -63,6 +76,8 @@ def run_hpo(
             in-memory storage.
         output_dir: Directory where ``best_params.json`` is written.
         seed: Random seed passed to TPESampler for reproducibility.
+        trial_timesteps: Environment steps per trial. Defaults to 10 000.
+            Pass a smaller value (e.g. 256) during testing.
 
     Returns:
         The completed Optuna study object.
@@ -78,7 +93,7 @@ def run_hpo(
         storage=storage,
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(make_objective(trial_timesteps), n_trials=n_trials)
 
     print(f"Best value: {study.best_value}")
     print(f"Best params: {study.best_params}")
@@ -102,6 +117,7 @@ def train_with_hpo(
     output_dir: Path = Path("hpo_results"),
     study_name: str = "bjj_hpo",
     storage: str | None = None,
+    trial_timesteps: int = 10_000,
 ) -> tuple[MaskablePPO, float, float]:
     """Run HPO then train a full model using the best discovered hyperparameters.
 
@@ -119,6 +135,8 @@ def train_with_hpo(
         output_dir: Directory for HPO outputs (``best_params.json``).
         study_name: Optuna study name.
         storage: Optuna storage URL. None uses in-memory storage.
+        trial_timesteps: Environment steps per HPO trial. Defaults to 10 000.
+            Pass a smaller value (e.g. 256) during testing.
 
     Returns:
         Tuple of (model, mean_reward, std_reward) from the final training run.
@@ -129,6 +147,7 @@ def train_with_hpo(
         study_name=study_name,
         storage=storage,
         seed=seed,
+        trial_timesteps=trial_timesteps,
     )
     best_params = study.best_params
     print(
