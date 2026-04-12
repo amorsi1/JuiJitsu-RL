@@ -11,14 +11,15 @@ All AI-generated notes, plans, reports, and scratch `.md` files must go in `.cla
 This project uses **uv** as the package manager (Python 3.12). The project is configured with a hatchling build backend and installs in editable mode via `uv sync`, making `Game`, `Graph`, and `render` importable directly (no `src.` prefix needed).
 
 ```bash
-uv sync --extra dev        # Install project + dev dependencies (pytest)
+uv sync --extra dev                  # Install project + dev dependencies (pytest)
+uv sync --extra training --extra dev # Also install SB3 training dependencies (sb3-contrib, torch)
 ```
 
 Run tests:
 
 ```bash
 uv run pytest tests/                         # Core game/graph tests
-uv run pytest src/Game/tests/               # Gym env + registration tests
+uv run pytest src/Game/tests/               # Gym env + registration + SB3 tests
 uv run pytest src/render/tests/              # Visualization tests
 uv run pytest tests/test_position.py::test_swap_players_positions  # Single test
 ```
@@ -77,7 +78,37 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 
 `q_learning()` is the active standalone training function. It uses epsilon-greedy exploration with configurable decay (`epsilon`, `epsilon_min`, `epsilon_decay` params). `QLearningAgent` is an incomplete class-based wrapper — `_initialize_state_space` still references `self.board` (should be `self.env.G`) and is not used for training.
 
+`action_masks()` is the public interface for sb3-contrib's MaskablePPO (delegates to `_get_action_mask()`).
+
 `check_env(BJJEnv())` passes cleanly as of 2026-03-28.
+
+### 3b. SB3 Training (`Game/train_sb3.py`)
+
+`train()` trains an agent on BJJEnv with action masking. Supports two algorithms via the `ALGORITHMS` registry:
+
+| Key | Class | Default n_steps | Default batch_size |
+|-----|-------|----------------|-------------------|
+| `"maskable_ppo"` | `MaskablePPO` | 2048 | 64 |
+| `"recurrent_ppo"` | `MaskableRecurrentPPO` | 128 | 128 |
+
+Run via CLI:
+```bash
+uv run python -m Game.train_sb3                                    # MaskablePPO (default)
+uv run python -m Game.train_sb3 --algorithm recurrent_ppo          # MaskableRecurrentPPO
+uv run python -m Game.train_sb3 --algorithm recurrent_ppo --total-timesteps 100000
+```
+
+`load_and_evaluate(model_path, algorithm)` reloads and evaluates a saved model. Both `train()` and `load_and_evaluate()` accept `algorithm` to dispatch to the correct class. Requires `uv sync --extra training`.
+
+### 3c. MaskableRecurrentPPO (`Game/maskable_recurrent/`)
+
+Custom algorithm combining `RecurrentPPO`'s LSTM memory with `MaskablePPO`'s action masking. No diamond inheritance — `MaskableRecurrentActorCriticPolicy` single-inherits from `RecurrentActorCriticPolicy` and grafts in masking by replacing `self.action_dist` with `make_masked_proba_distribution()` after `super().__init__()`, then rebuilding `action_net` and the optimizer.
+
+Key design details:
+- **Buffer**: `MaskableRecurrentRolloutBuffer` stores `action_masks` shape `(buffer_size, n_envs, n_actions)`, initialised all-ones. Padded timesteps use `padding_value=1.0` (not 0.0) to avoid `log(0)` in masked distributions.
+- **Policy alias**: `MlpLstmPolicy = MaskableRecurrentActorCriticPolicy` — use `"MlpLstmPolicy"` as the policy string.
+- **Training**: `model.learn(total_timesteps=N, use_masking=True)`
+- **Prediction**: `model.predict(obs, action_masks=masks)` — masks forwarded through policy to distribution.
 
 ### 4. Visualization (`render/`)
 

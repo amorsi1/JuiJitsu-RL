@@ -1,8 +1,10 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from pathlib import Path
+from .logging_utils import build_gameplay_logger
 from .play_game import Game, Board, GameState, Player, tqdm
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import random
 import time
 
@@ -13,10 +15,13 @@ from render.hud_announcements import AnnouncementEvent, WinType
 POINT_FLASH_DURATION: float = 2.0
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
+
+
 class BJJEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array", "ansi", "graph"], "render_fps": 2, "render_transition_fps": 15}
 
-    def __init__(self, render_mode: str | None = None) -> None:
+    def __init__(self, render_mode: str | None = None, gameplay_log_path: Path | None = None) -> None:
+        # Initialize renderers
         self.render_mode = render_mode
         self._renderer: object | None = None  # lazy FrameRenderer
         self._graph_renderer: object | None = None  # lazy GraphRenderer
@@ -26,7 +31,16 @@ class BJJEnv(gym.Env):
         self._point_flash_p1: tuple[str, float] | None = None  # (message, timestamp)
         self._point_flash_p2: tuple[str, float] | None = None
 
-        self.game = Game("BJJ Match")
+        # Initialize gameplay logger
+        self.gameplay_log_path = Path(gameplay_log_path) if gameplay_log_path is not None else None
+        self.gameplay_logger = build_gameplay_logger(
+            f"Game.gameplay.env.{id(self)}",
+            to_stdout=(self.render_mode is not None),
+            file_path=self.gameplay_log_path,
+        )
+
+        # Initialize game and graph
+        self.game = Game("BJJ Match", logger=self.gameplay_logger)
         self.game.initialize_game("Player1", "Player2")
         self.G = self.game.board.graph
 
@@ -100,21 +114,23 @@ class BJJEnv(gym.Env):
         Creates action mask for the current player based on the legal moves available to them
 
         Returns:
-        np.ndarray: An int8 array of shape (n,) where n is the total number of moves in the game (~700).
-                    Each element is 0 or 1, where:
-                    - 1 indicates a legal move
-                    - 0 indicates an illegal move
+        np.ndarray: A bool array of shape (n,) where n is the total number of moves in the game (~700).
+                    True indicates a legal move, False indicates an illegal move.
         """
         possible_moves = self.game.game_state.get_possible_moves(
             self.game.current_player.is_top,
             self.game.current_player.is_bottom
         )
-        mask = np.zeros(len(self.edge_ids), dtype=np.int8)  # mask is length of all possible actions in the entire game
+        mask = np.zeros(len(self.edge_ids), dtype=bool)  # mask is length of all possible actions in the entire game
         for move in possible_moves:
-            #sets only the legal moves to 1
             edge_id = move[1]['id']
-            mask[self.id_to_index[edge_id]] = 1
+            mask[self.id_to_index[edge_id]] = True
         return mask
+
+    def action_masks(self) -> np.ndarray:
+        """Public interface for sb3-contrib MaskablePPO action masking."""
+        return self._get_action_mask()
+
     
     def _update_graph_history_after_step(
         self,
@@ -163,9 +179,9 @@ class BJJEnv(gym.Env):
             random.seed(seed)  # Also seed Python's random, used by Game internals
 
         # Fully reset the game
-        self.game = Game("BJJ Match")  # Create a new game instance
+        self.game = Game("BJJ Match", logger=self.gameplay_logger)  # Create a new game instance
         self.game.board = Board(self.G)  # Reset the board with the graph
-        self.game.game_state = GameState(self.game.board)  # Reset the game state
+        self.game.game_state = GameState(self.game.board, logger=self.gameplay_logger)  # Reset the game state
         self.game.turn_count = 0
 
         self.game.initialize_game("Player1", "Player2")
@@ -201,6 +217,7 @@ class BJJEnv(gym.Env):
             return self._get_obs(), -1, False, False, {}
         (start, selected_end) = self.edge_id_to_nodes[edge_id]
         move = (selected_end, self.game.board.get_edge_data(start, selected_end))
+        acting_player: Player | None = self.game.current_player  # capture before play_turn() switches current_player
         self._pending_transition_id = move[1].get('id')
         self._pending_transition_target_node = selected_end
 
@@ -270,13 +287,18 @@ class BJJEnv(gym.Env):
         obs = self._get_obs()
         reward = self._calculate_reward(obs)
 
-        info = {"action_mask": self._get_action_mask()}
-
+        info: dict[str, Any] = {"action_mask": self._get_action_mask()}
         self._pending_announcement_event = announcement_event
         if self.render_mode in ("human", "graph"):
             self.render(announcement_event=announcement_event)
 
+        if terminated or truncated:
+            other_player = self.game.choose_other_player(acting_player)
+            info["is_win"] = self.game.winner == acting_player
+            info["is_loss"] = self.game.winner == other_player
+            info["point_diff"] = float(acting_player.points - other_player.points)
         return obs, reward, terminated, truncated, info
+
 
     def _calculate_reward(self, obs) -> float:
         reward = 0
