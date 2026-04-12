@@ -128,7 +128,7 @@ def train(
     resolved_n_steps = n_steps if n_steps is not None else cfg["default_n_steps"]
     resolved_batch_size = batch_size if batch_size is not None else cfg["default_batch_size"]
     resolved_save = Path(save_path) if save_path is not None else Path(f"models/{algorithm}_bjj")
-    resolved_tb = Path(tensorboard_log) if tensorboard_log is not None else Path(f"logs/{algorithm}_bjj")
+    resolved_tb = str(tensorboard_log) if tensorboard_log is not None else None
     resolved_checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir is not None else Path("models/checkpoints")
     resolved_best_model_dir = Path(best_model_dir) if best_model_dir is not None else Path("models/best_model")
 
@@ -144,7 +144,7 @@ def train(
         gamma=gamma,
         seed=seed,
         verbose=verbose,
-        tensorboard_log=str(resolved_tb),
+        tensorboard_log=resolved_tb,
     )
 
     eval_env = BJJEnv(

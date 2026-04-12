@@ -167,10 +167,14 @@ class _DummyEnv:
 
 
 class _DummyAlgo:
+    instances: list["_DummyAlgo"] = []
+
     def __init__(self, policy, env, **kwargs):
         self.policy = policy
         self.env = env
         self.n_steps = kwargs.get("n_steps")
+        self.init_kwargs = kwargs
+        _DummyAlgo.instances.append(self)
 
     def learn(self, total_timesteps, use_masking=True, callback=None):
         return self
@@ -282,6 +286,62 @@ def test_load_and_evaluate_respects_render_and_log_args(monkeypatch, tmp_path) -
     assert len(_DummyEnv.created) == 1
     assert _DummyEnv.created[0].render_mode == "human"
     assert _DummyEnv.created[0].gameplay_log_path == eval_log_path
+
+
+# ---------------------------------------------------------------------------
+# 7. tensorboard_log pass-through — regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_train_tensorboard_none_passes_none_to_algo(monkeypatch, tmp_path) -> None:
+    """train(..., tensorboard_log=None) must pass tensorboard_log=None to the algorithm, not a generated path."""
+    _DummyAlgo.instances = []
+    _patch_train_stack(monkeypatch)
+
+    train(
+        algorithm="maskable_ppo",
+        total_timesteps=1,
+        save_path=tmp_path / "model",
+        tensorboard_log=None,
+        eval_freq=1,
+        n_eval_episodes=1,
+        checkpoint_freq=1,
+        checkpoint_dir=tmp_path / "cp",
+        best_model_dir=tmp_path / "best",
+        verbose=0,
+    )
+
+    assert len(_DummyAlgo.instances) == 1
+    assert _DummyAlgo.instances[0].init_kwargs.get("tensorboard_log") is None, (
+        f"Expected tensorboard_log=None in algo constructor, "
+        f"got {_DummyAlgo.instances[0].init_kwargs.get('tensorboard_log')!r}"
+    )
+
+
+def test_train_explicit_tensorboard_log_forwarded_as_string(monkeypatch, tmp_path) -> None:
+    """train(..., tensorboard_log=<path>) must forward the path as a string to the algorithm."""
+    _DummyAlgo.instances = []
+    _patch_train_stack(monkeypatch)
+    tb_path = tmp_path / "logs"
+
+    train(
+        algorithm="maskable_ppo",
+        total_timesteps=1,
+        save_path=tmp_path / "model",
+        tensorboard_log=tb_path,
+        eval_freq=1,
+        n_eval_episodes=1,
+        checkpoint_freq=1,
+        checkpoint_dir=tmp_path / "cp",
+        best_model_dir=tmp_path / "best",
+        verbose=0,
+    )
+
+    assert len(_DummyAlgo.instances) == 1
+    assert _DummyAlgo.instances[0].init_kwargs.get("tensorboard_log") == str(tb_path), (
+        f"Expected tensorboard_log={str(tb_path)!r}, "
+        f"got {_DummyAlgo.instances[0].init_kwargs.get('tensorboard_log')!r}"
+    )
 
 
 def test_parse_args_reads_eval_render_flags(monkeypatch, tmp_path) -> None:
