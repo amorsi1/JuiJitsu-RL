@@ -145,6 +145,7 @@ class BJJEnv(gym.Env):
             return self._get_obs(), -1, False, False, {}
         (start, end) = self.edge_id_to_nodes[edge_id]
         move = (start, self.game.board.get_edge_data(start, end))
+        acting_player = self.game.current_player  # capture before play_turn() switches current_player
         self.game.play_turn(move)
         self.game.turn_count += 1
 
@@ -164,11 +165,10 @@ class BJJEnv(gym.Env):
 
         info: dict[str, Any] = {"action_mask": self._get_action_mask()}
         if terminated or truncated:
-            current_player = self.game.current_player
-            other_player = self.game.choose_other_player(current_player)
-            info["is_win"] = self.game.winner == current_player
+            other_player = self.game.choose_other_player(acting_player)
+            info["is_win"] = self.game.winner == acting_player
             info["is_loss"] = self.game.winner == other_player
-            info["point_diff"] = float(current_player.points - other_player.points)
+            info["point_diff"] = float(acting_player.points - other_player.points)
         return obs, reward, terminated, truncated, info
 
 

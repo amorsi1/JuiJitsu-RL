@@ -219,6 +219,43 @@ def test_truncated_when_turn_count_reaches_max_turns():
         )
 
 
+def test_truncation_terminal_info_reflects_acting_player():
+    """Terminal info after turn-limit points-win must reflect the player who took the final action.
+
+    Regression test for the bug where play_turn() switches current_player and the
+    terminal metric block then reads from the *next* player's perspective, inverting
+    is_win, is_loss, and point_diff.
+    """
+    env = BJJEnv()
+    _, info = env.reset()
+
+    acting_player = env.game.current_player
+    other_player = env.game.choose_other_player(acting_player)
+
+    # Give the acting player a 2-point lead so check_for_points_win declares them the winner.
+    acting_player.points = 2
+    other_player.points = 0
+
+    # Fake play_turn: simulate a non-terminal move by just switching players (no tap, no position-win).
+    env.game.play_turn = lambda move: env.game.switch_players()  # type: ignore[assignment]
+
+    # One step reaches max_turns → truncation → check_for_points_win → acting_player wins.
+    env.game.max_turns = 1
+    _, _, terminated, truncated, info_terminal = env.step(_first_valid_action(info))
+
+    assert terminated, "Expected terminated=True after points-win resolution"
+    assert not truncated
+    assert info_terminal["is_win"] is True, (
+        f"acting player should be is_win=True, got {info_terminal['is_win']}"
+    )
+    assert info_terminal["is_loss"] is False, (
+        f"acting player should be is_loss=False, got {info_terminal['is_loss']}"
+    )
+    assert info_terminal["point_diff"] > 0, (
+        f"acting player's point_diff should be positive, got {info_terminal['point_diff']}"
+    )
+
+
 def test_masked_actions_are_legal_moves(env):
     """Every action flagged True in the mask must be a legal move for the current player."""
     obs, info = env.reset()
