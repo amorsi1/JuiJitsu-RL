@@ -31,11 +31,27 @@ class GameState:
         self.current_node = None
         self.logger = logger or build_gameplay_logger(
             f"Game.gameplay.gamestate.{id(self)}", to_stdout=False
-        )
+        )        
 
-    def initialize(self):
-        # position 94 is 'symmetric staggered standing'. A central node with many possible outgoing edges
-        self.current_node = random.choice([94, random.choice(list(self.board.graph.nodes()))])
+    def initialize(self) -> None:
+        """Initialize to a valid position with outgoing edges.
+
+        Maintains the original 50/50 bias toward node 94 ('symmetric staggered standing'),
+        but ensures only nodes with outgoing edges are selected to avoid dead-end resets.
+        """
+        # Get all nodes with outgoing edges (exclude dead-ends)
+        valid_nodes = [
+            node for node in self.board.graph.nodes()
+            if self.board.get_outgoing_edges(node)
+        ]
+
+        if not valid_nodes:
+            # Fallback if no valid nodes (shouldn't happen with valid graph)
+            self.current_node = 94
+            return
+
+        # 50% node 94 (symmetric staggered standing), 50% random valid node
+        self.current_node = random.choice([94, random.choice(valid_nodes)])
 
     def update(self, new_node: int):
         self.logger.info(
@@ -173,7 +189,7 @@ class Game:
         self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
         self.player2.is_top, self.player2.is_bottom = cache
 
-    def play_turn(self, chosen_move: Tuple[int, Dict]=None) -> bool:
+    def play_turn(self, chosen_move: Tuple[int, Dict] = None) -> bool:
         if chosen_move:
             move = chosen_move
         else:
@@ -189,8 +205,9 @@ class Game:
                     self.logger.info(
                         f"No moves available for {self.current_player.name}. Switching players."
                     )
-                    # note: maybe this shouldn't conclude the turn, and instead should switch players then call play_turn again
-                    return self.switch_players()
+                    self.switch_players()
+                    self.ensure_playable_state()
+                    return False
             else:
                 move = self.current_player.choose_move(possible_moves)
         points, player_tapped, swap_players_positions = self.game_state.process_move(move)
@@ -230,11 +247,37 @@ class Game:
         if swap_players_positions:
             self._swap_players_positions()
 
-        return self.switch_players()
+        self.switch_players()
+        self.ensure_playable_state()
+        return False
 
     def switch_players(self) -> bool:
         self.current_player = self.player2 if self.current_player is self.player1 else self.player1
         return False
+
+    def ensure_playable_state(self) -> None:
+        """Ensure the current player has at least one valid move.
+
+        After switching players, the new current player may face a dead-end
+        node (no outgoing edges) or a position where all outgoing edges require
+        the opposite top/bottom role. Resolves by reinitializing on dead-ends
+        and switching players when edges exist but none are valid.
+
+        Since players always have opposite positions, at most one switch is
+        needed for non-dead-end nodes. The bounded loop handles the rare case
+        where reinitializing lands on another dead-end.
+        """
+        for _ in range(10):  # safety bound; should resolve in 1-2 iterations
+            if self.winner is not None:
+                return
+            if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
+                self.game_state.initialize()
+                continue
+            if self.game_state.get_possible_moves(
+                self.current_player.is_top, self.current_player.is_bottom
+            ):
+                return
+            self.switch_players()
 
     def check_for_points_win(self):
         if self.player1.points > self.player2.points:
