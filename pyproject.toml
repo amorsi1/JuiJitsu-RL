@@ -37,4 +37,5 @@ build-backend = "hatchling.build"
 packages = ["src/Game", "src/Graph", "src/render"]
 
 [tool.uv]
+required-version = ">=0.9.17"
 exclude-newer = "1 week" 
