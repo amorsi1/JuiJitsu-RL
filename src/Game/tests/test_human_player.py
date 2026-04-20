@@ -60,6 +60,7 @@ def test_make_human_strategy_raises_for_illegal_selection() -> None:
 def test_game_play_turn_works_with_human_strategy() -> None:
     game = Game("Human integration smoke")
     game.initialize_game("Human", "Agent")
+    game.ensure_playable_state()
     server = StubPositionServer()
 
     human_player = game.current_player
