@@ -649,6 +649,24 @@
         }
     }
 
+    // === Camera tracking (mirrors GrappleMap's tick() smoothing) ===
+    // Exponentially lerp camera.target toward the midpoint of both players' Core joints.
+    // Horizontal: 0.5% per frame. Vertical: 5% when rising, 0.5% when falling.
+    function updateCameraTarget() {
+        if (!currentPos) return;
+        const c0 = currentPos[0][Core];
+        const c1 = currentPos[1][Core];
+        const cx = (c0[0] + c1[0]) * 0.5;
+        const cy = Math.max(0, (c0[1] + c1[1]) * 0.5 - 0.5);
+        const cz = (c0[2] + c1[2]) * 0.5;
+
+        const tgt = camera.target;
+        const vspeed = cy > tgt.y ? 0.05 : 0.005;
+        tgt.x = cx * 0.005 + tgt.x * 0.995;
+        tgt.y = cy * vspeed + tgt.y * (1 - vspeed);
+        tgt.z = cz * 0.005 + tgt.z * 0.995;
+    }
+
     // === Render loop ===
     // This follows GrappleMap's live viewer model: transition messages are
     // converted into a queue of transformed world-space keyframes, then each
@@ -674,6 +692,7 @@
             }
         }
 
+        updateCameraTarget();
         updateDisplay();
         scene.render();
     });
