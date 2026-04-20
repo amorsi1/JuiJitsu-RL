@@ -2,12 +2,25 @@
 WebSocket server that pushes 3D position and transition frame data to the browser viewer.
 """
 import asyncio
+import contextlib
+import errno
 import json
+import os
+import signal
+import subprocess
 import threading
 import websockets
 from typing import Callable, Dict, List, Optional
 
 from render.position_loader import load_all
+
+
+def _free_port(port: int) -> None:
+    """Terminate any process listening on the given TCP port."""
+    result = subprocess.run(["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True)
+    for pid_str in result.stdout.strip().splitlines():
+        with contextlib.suppress(Exception):
+            os.kill(int(pid_str), signal.SIGTERM)
 
 
 class PositionServer:
@@ -67,7 +80,14 @@ class PositionServer:
 
         async def serve():
             self._stop_event = asyncio.Event()
-            self._server = await websockets.serve(self._handler, self.host, self.port)
+            try:
+                self._server = await websockets.serve(self._handler, self.host, self.port)
+            except OSError as exc:
+                if exc.errno != errno.EADDRINUSE:
+                    raise
+                _free_port(self.port)
+                await asyncio.sleep(0.5)
+                self._server = await websockets.serve(self._handler, self.host, self.port)
             await self._stop_event.wait()
             self._server.close()
             await self._server.wait_closed()
