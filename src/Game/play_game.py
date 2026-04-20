@@ -115,6 +115,8 @@ class Player:
 
     def choose_move(self, possible_moves: List[Tuple[int, Dict]]) -> Tuple[int, Dict]:
         assert possible_moves, "empty list of possible_moves passed to choose_move"
+        if callable(self.strategy):
+            return self.strategy(possible_moves)
         if self.strategy == 'random':
             return random.choice(possible_moves)
         # Implement other strategies here
