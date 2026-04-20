@@ -7,6 +7,55 @@
         html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
         #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #graphOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 8;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 180ms ease;
+        }
+        #graphOverlay.visible {
+            opacity: 1;
+        }
+        #graphOverlay .graph-link {
+            stroke: rgba(255, 255, 255, 0.45);
+            stroke-width: 2;
+            marker-end: url(#graphArrow);
+        }
+        #graphOverlay .graph-node {
+            fill: #8ec5ff;
+            stroke: rgba(6, 18, 39, 0.95);
+            stroke-width: 2;
+            opacity: 0.35;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: opacity 140ms ease, transform 140ms ease;
+        }
+        #graphOverlay .graph-node:hover {
+            opacity: 1;
+        }
+        #graphOverlay .graph-node.current {
+            fill: #ffd88f;
+            opacity: 0.92;
+            cursor: default;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-node.selected {
+            opacity: 1;
+            fill: #ffac64;
+        }
+        #graphOverlay .graph-node.dimmed,
+        #graphOverlay .graph-label.dimmed {
+            opacity: 0.1;
+        }
+        #graphOverlay .graph-label {
+            fill: rgba(255, 255, 255, 0.88);
+            font-family: monospace;
+            font-size: 12px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
         #turnControl {
             position: fixed;
             top: 10px;
@@ -62,9 +111,11 @@
         }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
+    <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
     <div id="turnControl">
         <div id="turnLabel">Turn</div>
@@ -260,6 +311,139 @@
     let lastKeyframe = null;     // last settled keyframe in world space
     const queuedFrames = [];     // transformed keyframes waiting to be played
     let animK = 0;               // interpolation factor [0,1) to the next queued keyframe
+    const graphOverlay = document.getElementById('graphOverlay');
+    let graphSim = null;
+
+    function truncateLabel(text, maxLen = 28) {
+        if (!text) return '';
+        if (text.length <= maxLen) return text;
+        return text.slice(0, maxLen - 1) + '...';
+    }
+
+    function overlayCenter() {
+        return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    }
+
+    function resizeOverlay() {
+        graphOverlay.setAttribute('width', window.innerWidth);
+        graphOverlay.setAttribute('height', window.innerHeight);
+    }
+
+    function clearOverlay() {
+        if (graphSim) {
+            graphSim.stop();
+            graphSim = null;
+        }
+        d3.select(graphOverlay).selectAll('*').remove();
+        graphOverlay.classList.remove('visible');
+    }
+
+    function renderLegalMovesOverlay(msg) {
+        clearOverlay();
+        resizeOverlay();
+        graphOverlay.classList.add('visible');
+        const center = overlayCenter();
+        const currentNodeId = String(msg.current_node);
+        const nodes = [{
+            id: currentNodeId,
+            label: 'Current',
+            current: true,
+            fx: center.x,
+            fy: center.y
+        }];
+        const links = [];
+        const seenNodes = new Set([currentNodeId]);
+
+        for (const move of msg.moves || []) {
+            const moveNodeId = String(move.to_node);
+            if (!seenNodes.has(moveNodeId)) {
+                nodes.push({
+                    id: moveNodeId,
+                    label: truncateLabel(move.description || ('Node ' + move.to_node)),
+                    to_node: move.to_node,
+                    transition_id: move.transition_id,
+                    current: false
+                });
+                seenNodes.add(moveNodeId);
+            }
+            links.push({ source: currentNodeId, target: moveNodeId });
+        }
+
+        const svg = d3.select(graphOverlay);
+        const defs = svg.append('defs');
+        defs.append('marker')
+            .attr('id', 'graphArrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 16)
+            .attr('refY', 0)
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', 'rgba(255, 255, 255, 0.55)');
+
+        const linkSel = svg.append('g')
+            .selectAll('line')
+            .data(links)
+            .enter()
+            .append('line')
+            .attr('class', 'graph-link');
+
+        const nodeSel = svg.append('g')
+            .selectAll('circle')
+            .data(nodes)
+            .enter()
+            .append('circle')
+            .attr('class', (d) => 'graph-node' + (d.current ? ' current' : ''))
+            .attr('r', (d) => d.current ? 19 : 15)
+            .on('click', (event, d) => {
+                if (d.current || !ws || ws.readyState !== WebSocket.OPEN) return;
+                ws.send(JSON.stringify({ type: 'move_selected', to_node: d.to_node }));
+
+                nodeSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
+                labelSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
+                nodeSel.classed('selected', (n) => n.id === d.id);
+
+                d.fx = center.x;
+                d.fy = center.y;
+                const sourceNode = nodes.find((n) => n.current);
+                if (sourceNode) {
+                    sourceNode.fx = null;
+                    sourceNode.fy = null;
+                }
+                if (graphSim) {
+                    graphSim.alpha(0.8).restart();
+                }
+            });
+
+        const labelSel = svg.append('g')
+            .selectAll('text')
+            .data(nodes)
+            .enter()
+            .append('text')
+            .attr('class', 'graph-label')
+            .text((d) => d.current ? ('Node ' + d.id) : d.label);
+
+        graphSim = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id((d) => d.id).distance(150).strength(0.95))
+            .force('charge', d3.forceManyBody().strength(-520))
+            .force('center', d3.forceCenter(center.x, center.y))
+            .force('collide', d3.forceCollide(34))
+            .on('tick', () => {
+                linkSel
+                    .attr('x1', (d) => d.source.x)
+                    .attr('y1', (d) => d.source.y)
+                    .attr('x2', (d) => d.target.x)
+                    .attr('y2', (d) => d.target.y);
+                nodeSel
+                    .attr('cx', (d) => d.x)
+                    .attr('cy', (d) => d.y);
+                labelSel
+                    .attr('x', (d) => d.x)
+                    .attr('y', (d) => d.y + 32);
+            });
+    }
 
     function initPlayers(posData) {
         if (playerUpdaters) return; // already created
@@ -494,7 +678,16 @@
         scene.render();
     });
 
-    window.addEventListener('resize', () => engine.resize());
+    resizeOverlay();
+    window.addEventListener('resize', () => {
+        engine.resize();
+        resizeOverlay();
+        if (graphSim) {
+            const center = overlayCenter();
+            graphSim.force('center', d3.forceCenter(center.x, center.y));
+            graphSim.alpha(0.35).restart();
+        }
+    });
 
     // === WebSocket client ===
     const statusEl = document.getElementById('status');
@@ -535,8 +728,14 @@
                 }
                 return;
             }
+            if (msg.type === 'legal_moves') {
+                renderLegalMovesOverlay(msg);
+                statusEl.textContent = 'Choose a move';
+                return;
+            }
 
             if (msg.type === 'position') {
+                clearOverlay();
                 const posData = msg.data;
                 if (!playerUpdaters) initPlayers(posData);
                 currentReo = zeroReo();
@@ -547,6 +746,7 @@
                 statusEl.textContent = 'Position: node ' + msg.node_id;
                 if (msg.turn) setActiveTurn(msg.turn);
             } else if (msg.type === 'transition') {
+                clearOverlay();
                 if (!currentReo) {
                     currentReo = zeroReo();
                 }
