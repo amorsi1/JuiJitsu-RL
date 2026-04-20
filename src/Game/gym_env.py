@@ -1,6 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import networkx as nx
 from pathlib import Path
 from .logging_utils import build_gameplay_logger
 from .play_game import Game, Board, GameState, Player, tqdm
@@ -15,6 +16,39 @@ from render.hud_announcements import AnnouncementEvent, WinType
 POINT_FLASH_DURATION: float = 2.0
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
+
+
+def build_action_edge_maps(
+    graph: nx.DiGraph,
+) -> tuple[list[int], dict[int, int], dict[int, int], dict[int, tuple[int, int]]]:
+    """Build bidirectional action-index mappings from graph edge IDs."""
+    edge_ids = [data["id"] for _, _, data in graph.edges(data=True)]
+    id_to_index = {edge_id: index for index, edge_id in enumerate(edge_ids)}
+    index_to_id = {index: edge_id for index, edge_id in enumerate(edge_ids)}
+    edge_id_to_nodes = {
+        data["id"]: (start, end) for start, end, data in graph.edges(data=True)
+    }
+    return edge_ids, id_to_index, index_to_id, edge_id_to_nodes
+
+
+def build_obs(
+    game_state: GameState,
+    player: Player,
+    turns_left: int,
+    other_player: Player | None = None,
+) -> np.ndarray:
+    """Build flat observation [position, point_diff, on_top, on_bottom, turns_left]."""
+    other_points = other_player.points if other_player is not None else 0
+    return np.array(
+        [
+            game_state.current_node,
+            player.points - other_points,
+            bool_to_int(player.is_top),
+            bool_to_int(player.is_bottom),
+            turns_left,
+        ],
+        dtype=np.float32,
+    )
 
 
 class BJJEnv(gym.Env):
@@ -45,10 +79,12 @@ class BJJEnv(gym.Env):
         self.G = self.game.board.graph
 
         # Get edge IDs and create a mapping
-        self.edge_ids = [data['id'] for _, _, data in self.G.edges(data=True)]
-        self.id_to_index = {id: index for index, id in enumerate(self.edge_ids)}
-        self.index_to_id = {index: id for index, id in enumerate(self.edge_ids)}
-        self.edge_id_to_nodes = {data['id']: (start, end) for start, end, data in self.G.edges(data=True)}
+        (
+            self.edge_ids,
+            self.id_to_index,
+            self.index_to_id,
+            self.edge_id_to_nodes,
+        ) = build_action_edge_maps(self.G)
 
         # get node IDs
         self.num_nodes = max(self.G.nodes()) + 1  # nodes are 0-indexed; +1 gives count and ensures Discrete covers all IDs
@@ -99,14 +135,13 @@ class BJJEnv(gym.Env):
         # Observation order: [current_position, point_difference, on_top, on_bottom, turns_left]
         current_player = self.game.current_player
         other_player = self.game.choose_other_player(current_player)
-
-        return np.array([
-            self.game.game_state.current_node,
-            current_player.points - other_player.points,
-            bool_to_int(current_player.is_top),
-            bool_to_int(current_player.is_bottom),
-            self.game.max_turns - self.game.turn_count
-        ], dtype=np.float32)
+        turns_left = self.game.max_turns - self.game.turn_count
+        return build_obs(
+            self.game.game_state,
+            current_player,
+            turns_left,
+            other_player=other_player,
+        )
 
 
     def _get_action_mask(self) -> np.ndarray:
