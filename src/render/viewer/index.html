@@ -434,7 +434,6 @@
         graphSim = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(links).id((d) => d.id).distance(150).strength(0.95))
             .force('charge', d3.forceManyBody().strength(-520))
-            .force('center', d3.forceCenter(center.x, center.y))
             .force('collide', d3.forceCollide(34))
             .on('tick', () => {
                 linkSel.each(function(d) {
@@ -714,11 +713,6 @@
     window.addEventListener('resize', () => {
         engine.resize();
         resizeOverlay();
-        if (graphSim) {
-            const center = overlayCenter();
-            graphSim.force('center', d3.forceCenter(center.x, center.y));
-            graphSim.alpha(0.35).restart();
-        }
     });
 
     // === WebSocket client ===
