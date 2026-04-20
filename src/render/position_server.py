@@ -5,7 +5,7 @@ import asyncio
 import json
 import threading
 import websockets
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from render.position_loader import load_all
 
@@ -22,6 +22,7 @@ class PositionServer:
         self._thread: Optional[threading.Thread] = None
         self._server = None
         self._stop_event: Optional[asyncio.Event] = None
+        self.on_move_selected: Optional[Callable[[int], None]] = None
 
     def load_data(self, nodes_path: str = None, transitions_path: str = None):
         self.positions, self.transition_frames = load_all(nodes_path, transitions_path)
@@ -43,6 +44,13 @@ class PositionServer:
 
                 if payload.get('type') == 'get_turn':
                     await websocket.send(self._turn_message())
+                elif payload.get('type') == 'move_selected':
+                    to_node = payload.get('to_node')
+                    if self.on_move_selected is not None:
+                        try:
+                            self.on_move_selected(int(to_node))
+                        except (TypeError, ValueError):
+                            continue
         finally:
             self._clients.discard(websocket)
 
@@ -92,6 +100,17 @@ class PositionServer:
         """Broadcast the active turn to all connected clients."""
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(self._turn_message()), self._loop)
+
+    def send_legal_moves(self, current_node: int, moves: List[dict]):
+        """Broadcast legal moves for the current human turn."""
+        payload = {
+            'type': 'legal_moves',
+            'current_node': current_node,
+            'moves': moves,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
 
     def set_turn(self, turn: str):
         """Store and broadcast whose turn it is."""
