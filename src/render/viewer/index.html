@@ -431,11 +431,18 @@
             .force('center', d3.forceCenter(center.x, center.y))
             .force('collide', d3.forceCollide(34))
             .on('tick', () => {
-                linkSel
-                    .attr('x1', (d) => d.source.x)
-                    .attr('y1', (d) => d.source.y)
-                    .attr('x2', (d) => d.target.x)
-                    .attr('y2', (d) => d.target.y);
+                linkSel.each(function(d) {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    const sr = d.source.current ? 19 : 15;
+                    const tr = d.target.current ? 19 : 15;
+                    d3.select(this)
+                        .attr('x1', d.source.x + dx / dist * sr)
+                        .attr('y1', d.source.y + dy / dist * sr)
+                        .attr('x2', d.target.x - dx / dist * tr)
+                        .attr('y2', d.target.y - dy / dist * tr);
+                });
                 nodeSel
                     .attr('cx', (d) => d.x)
                     .attr('cy', (d) => d.y);
