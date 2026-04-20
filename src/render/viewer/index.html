@@ -354,17 +354,23 @@
         const links = [];
         const seenNodes = new Set([currentNodeId]);
 
+        const totalMoves = (msg.moves || []).length;
+        let moveIndex = 0;
         for (const move of msg.moves || []) {
             const moveNodeId = String(move.to_node);
             if (!seenNodes.has(moveNodeId)) {
+                const angle = (2 * Math.PI / Math.max(totalMoves, 1)) * moveIndex - Math.PI / 2;
                 nodes.push({
                     id: moveNodeId,
                     label: truncateLabel(move.description || ('Node ' + move.to_node)),
                     to_node: move.to_node,
                     transition_id: move.transition_id,
-                    current: false
+                    current: false,
+                    x: center.x + 160 * Math.cos(angle),
+                    y: center.y + 160 * Math.sin(angle),
                 });
                 seenNodes.add(moveNodeId);
+                moveIndex++;
             }
             links.push({ source: currentNodeId, target: moveNodeId });
         }
