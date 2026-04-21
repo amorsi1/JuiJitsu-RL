@@ -23,6 +23,9 @@
             stroke-width: 2;
             marker-end: url(#graphArrow);
         }
+        #graphOverlay .graph-link.dimmed {
+            opacity: 0.16;
+        }
         #graphOverlay .graph-node {
             fill: #8ec5ff;
             stroke: rgba(6, 18, 39, 0.95);
@@ -412,18 +415,32 @@
 
                 nodeSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
                 labelSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
+                linkSel.classed('dimmed', () => true);
                 nodeSel.classed('selected', (n) => n.id === d.id);
 
-                d.fx = center.x;
-                d.fy = center.y;
-                const sourceNode = nodes.find((n) => n.current);
-                if (sourceNode) {
-                    sourceNode.fx = null;
-                    sourceNode.fy = null;
-                }
                 if (graphSim) {
-                    graphSim.alpha(0.8).restart();
+                    graphSim.stop();
                 }
+
+                const panX = center.x - d.x;
+                const panY = center.y - d.y;
+                const duration = 420;
+                const start = performance.now();
+
+                function easeOutCubic(t) {
+                    return 1 - Math.pow(1 - t, 3);
+                }
+
+                function animatePan(now) {
+                    const t = Math.min((now - start) / duration, 1);
+                    const e = easeOutCubic(t);
+                    group.attr('transform', `translate(${panX * e},${panY * e})`);
+                    if (t < 1) {
+                        requestAnimationFrame(animatePan);
+                    }
+                }
+
+                requestAnimationFrame(animatePan);
             });
 
         const labelSel = group.append('g')
