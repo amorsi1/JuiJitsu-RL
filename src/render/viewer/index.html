@@ -59,6 +59,11 @@
             text-anchor: middle;
             pointer-events: none;
         }
+        #graphOverlay .continuity-arrow {
+            stroke: rgba(255, 220, 100, 0.92);
+            stroke-width: 2.5;
+            fill: none;
+        }
         #turnControl {
             position: fixed;
             top: 10px;
@@ -341,6 +346,54 @@
         graphOverlay.classList.remove('visible');
     }
 
+    function drawContinuityArrow(group, sourceNode, targetNode) {
+        if (!sourceNode || !targetNode) return;
+
+        const svg = d3.select(graphOverlay);
+        let defs = svg.select('defs');
+        if (defs.empty()) {
+            defs = svg.append('defs');
+        }
+        if (defs.select('#continuityArrow').empty()) {
+            defs.append('marker')
+                .attr('id', 'continuityArrow')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('markerWidth', 7)
+                .attr('markerHeight', 7)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', 'rgba(255,220,100,0.9)');
+        }
+
+        const dx = targetNode.x - sourceNode.x;
+        const dy = targetNode.y - sourceNode.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const sr = 19;
+        const tr = 15;
+        const x1 = sourceNode.x + dx / dist * sr;
+        const y1 = sourceNode.y + dy / dist * sr;
+        const x2 = targetNode.x - dx / dist * tr;
+        const y2 = targetNode.y - dy / dist * tr;
+
+        const line = group.insert('line', ':first-child')
+            .attr('class', 'continuity-arrow')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('marker-end', 'url(#continuityArrow)');
+
+        const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+        line.attr('stroke-dasharray', length)
+            .attr('stroke-dashoffset', length)
+            .transition()
+            .duration(300)
+            .attr('stroke-dashoffset', 0);
+    }
+
     function renderLegalMovesOverlay(msg) {
         clearOverlay();
         resizeOverlay();
@@ -437,6 +490,8 @@
                     group.attr('transform', `translate(${panX * e},${panY * e})`);
                     if (t < 1) {
                         requestAnimationFrame(animatePan);
+                    } else {
+                        drawContinuityArrow(group, nodes.find((n) => n.current), d);
                     }
                 }
 
