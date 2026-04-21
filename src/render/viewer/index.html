@@ -886,6 +886,12 @@
                 y: seededY,
                 transition_id: move.transition_id ?? null
             });
+            // Always place selectable nodes near the current node, even if the node
+            // existed previously with coordinates from an earlier turn's simulation.
+            targetNode.x = seededX;
+            targetNode.y = seededY;
+            targetNode.vx = 0;
+            targetNode.vy = 0;
             if (targetNode.lastSeenEpoch !== overlayEpoch) {
                 targetNode.lastSeenEpoch = overlayEpoch;
             }
