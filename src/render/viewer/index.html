@@ -522,9 +522,13 @@
             .attr('d', 'M0,-5L10,0L0,5')
             .attr('fill', 'rgba(255,220,100,0.9)');
 
-        overlayState.group = overlayState.svg.append('g')
-            .attr('class', 'graph-group')
+        // Outer group: holds only the clip, no transform — so the clipPath rect
+        // is evaluated in SVG/screen space (not in the panned graph space).
+        const clipGroup = overlayState.svg.append('g')
             .attr('clip-path', 'url(#graphHistoryWindow)');
+        // Inner group: holds only the pan transform, no clip-path.
+        overlayState.group = clipGroup.append('g')
+            .attr('class', 'graph-group');
         overlayState.linkLayer = overlayState.group.append('g').attr('class', 'graph-links');
         overlayState.nodeLayer = overlayState.group.append('g').attr('class', 'graph-nodes');
         overlayState.labelLayer = overlayState.group.append('g').attr('class', 'graph-labels');
