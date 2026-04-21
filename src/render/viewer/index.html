@@ -399,6 +399,7 @@
         resizeOverlay();
         graphOverlay.classList.add('visible');
         const center = overlayCenter();
+        let moveCommitted = false;
         const currentNodeId = String(msg.current_node);
         const nodes = [{
             id: currentNodeId,
@@ -463,13 +464,14 @@
             .attr('class', (d) => 'graph-node' + (d.current ? ' current' : ''))
             .attr('r', (d) => d.current ? 19 : 15)
             .on('click', (event, d) => {
-                if (d.current || !ws || ws.readyState !== WebSocket.OPEN) return;
-                ws.send(JSON.stringify({ type: 'move_selected', to_node: d.to_node }));
+                if (moveCommitted || d.current || !ws || ws.readyState !== WebSocket.OPEN) return;
+                moveCommitted = true;
 
                 nodeSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
                 labelSel.classed('dimmed', (n) => !n.current && n.id !== d.id);
                 linkSel.classed('dimmed', () => true);
                 nodeSel.classed('selected', (n) => n.id === d.id);
+                nodeSel.style('pointer-events', 'none');
 
                 if (graphSim) {
                     graphSim.stop();
@@ -477,21 +479,28 @@
 
                 const panX = center.x - d.x;
                 const panY = center.y - d.y;
-                const duration = 420;
+                const duration = 900;
                 const start = performance.now();
 
-                function easeOutCubic(t) {
-                    return 1 - Math.pow(1 - t, 3);
+                function easeInOutCubic(t) {
+                    return t < 0.5
+                        ? 4 * t * t * t
+                        : 1 - Math.pow(-2 * t + 2, 3) / 2;
                 }
 
                 function animatePan(now) {
                     const t = Math.min((now - start) / duration, 1);
-                    const e = easeOutCubic(t);
+                    const e = easeInOutCubic(t);
                     group.attr('transform', `translate(${panX * e},${panY * e})`);
                     if (t < 1) {
                         requestAnimationFrame(animatePan);
                     } else {
                         drawContinuityArrow(group, nodes.find((n) => n.current), d);
+                        window.setTimeout(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({ type: 'move_selected', to_node: d.to_node }));
+                            }
+                        }, 220);
                     }
                 }
 
