@@ -362,7 +362,8 @@
             linkSel: null,
             labelSel: null,
             renderNodes: [],
-            renderLinks: []
+            renderLinks: [],
+            panAnimId: 0
         };
     }
 
@@ -430,6 +431,7 @@
 
     function centerOverlayOnNode(node) {
         if (!node) return;
+        overlayState.panAnimId += 1;
         const center = overlayCenter();
         overlayState.panX = center.x - node.x;
         overlayState.panY = center.y - node.y;
@@ -695,6 +697,8 @@
             return;
         }
 
+        overlayState.panAnimId += 1;
+        const myAnimId = overlayState.panAnimId;
         const start = performance.now();
 
         function easeInOutCubic(t) {
@@ -704,6 +708,7 @@
         }
 
         function animate(now) {
+            if (overlayState.panAnimId !== myAnimId) return;
             const t = Math.min((now - start) / duration, 1);
             const e = easeInOutCubic(t);
             overlayState.panX = startPanX + (targetPanX - startPanX) * e;
