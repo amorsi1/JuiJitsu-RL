@@ -389,14 +389,17 @@
             .attr('d', 'M0,-5L10,0L0,5')
             .attr('fill', 'rgba(255, 255, 255, 0.55)');
 
-        const linkSel = svg.append('g')
+        const group = svg.append('g')
+            .attr('class', 'graph-group');
+
+        const linkSel = group.append('g')
             .selectAll('line')
             .data(links)
             .enter()
             .append('line')
             .attr('class', 'graph-link');
 
-        const nodeSel = svg.append('g')
+        const nodeSel = group.append('g')
             .selectAll('circle')
             .data(nodes)
             .enter()
@@ -423,7 +426,7 @@
                 }
             });
 
-        const labelSel = svg.append('g')
+        const labelSel = group.append('g')
             .selectAll('text')
             .data(nodes)
             .enter()
