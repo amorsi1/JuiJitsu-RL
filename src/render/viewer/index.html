@@ -7,6 +7,172 @@
         html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
         #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            z-index: 9;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px 20px 6px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        #hudTurnRow {
+            text-align: center;
+            font-size: 20px;
+            line-height: 1;
+            color: rgb(240, 240, 240);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudPositionName {
+            text-align: center;
+            font-size: 15px;
+            line-height: 1;
+            color: rgb(230, 230, 230);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudScoreRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        #hudP1Score {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Score {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudFlashRow {
+            height: 18px;
+            font-size: 15px;
+            line-height: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #hudP1Flash {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Flash {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudAnnouncement {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            display: flex;
+            transition: opacity 200ms ease;
+        }
+        #hudAnnouncement.hidden {
+            opacity: 0;
+        }
+        #hudAnnouncement.visible {
+            opacity: 1;
+        }
+        #hudAnnouncement.placement-center {
+            align-items: center;
+            justify-content: center;
+        }
+        #hudAnnouncement.placement-upper_third {
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 33vh;
+            box-sizing: border-box;
+        }
+        .ann-panel {
+            padding: 14px 22px;
+            border-radius: 10px;
+        }
+        .panel-celebration {
+            background: rgba(245, 196, 66, 0.95);
+            border: 2px solid rgb(214, 118, 32);
+            box-shadow: 0 8px 24px rgba(40, 24, 8, 0.5);
+        }
+        .panel-text_only {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+        }
+        .ann-text {
+            font-family: monospace;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.1;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
         #graphOverlay {
             position: fixed;
             inset: 0;
@@ -138,6 +304,19 @@
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
+    <div id="hud">
+      <div id="hudTurnRow">Turn <span id="hudTurnNumber">-</span></div>
+      <div id="hudPositionName">-</div>
+      <div id="hudScoreRow">
+        <span id="hudP1Score">P1: 0</span>
+        <span id="hudP2Score">P2: 0</span>
+      </div>
+      <div id="hudFlashRow">
+        <span id="hudP1Flash"></span>
+        <span id="hudP2Flash"></span>
+      </div>
+    </div>
+    <div id="hudAnnouncement" class="hidden"></div>
     <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
     <div id="turnControl">
@@ -1263,8 +1442,19 @@
 
     // === WebSocket client ===
     const statusEl = document.getElementById('status');
+    const hudTurnNumber = document.getElementById('hudTurnNumber');
+    const hudPositionName = document.getElementById('hudPositionName');
+    const hudP1Score = document.getElementById('hudP1Score');
+    const hudP2Score = document.getElementById('hudP2Score');
+    const hudP1Flash = document.getElementById('hudP1Flash');
+    const hudP2Flash = document.getElementById('hudP2Flash');
+    const hudAnnouncement = document.getElementById('hudAnnouncement');
     const blueTurnButton = document.getElementById('blueTurnButton');
     const redTurnButton = document.getElementById('redTurnButton');
+    let prevHudState = null;
+    let p1FlashTimer = null;
+    let p2FlashTimer = null;
+    let announcementTimer = null;
     let ws;
     let reconnectTimer;
 
@@ -1282,6 +1472,61 @@
         }
     }
 
+    function showFlash(el, text, setTimer, existingTimer) {
+        if (existingTimer) clearTimeout(existingTimer);
+        el.textContent = text;
+        setTimer(setTimeout(() => {
+            el.textContent = '';
+        }, 2000));
+    }
+
+    function applyHudState(msg) {
+        hudTurnNumber.textContent = msg.turn_number;
+        hudPositionName.textContent = msg.position_name;
+        const prevP1 = prevHudState?.p1_points ?? null;
+        const prevP2 = prevHudState?.p2_points ?? null;
+        hudP1Score.textContent = 'P1: ' + msg.p1_points;
+        hudP2Score.textContent = 'P2: ' + msg.p2_points;
+        if (prevP1 !== null && msg.p1_points > prevP1) {
+            showFlash(
+                hudP1Flash,
+                '+' + (msg.p1_points - prevP1) + ' pts',
+                (t) => p1FlashTimer = t,
+                p1FlashTimer
+            );
+        }
+        if (prevP2 !== null && msg.p2_points > prevP2) {
+            showFlash(
+                hudP2Flash,
+                '+' + (msg.p2_points - prevP2) + ' pts',
+                (t) => p2FlashTimer = t,
+                p2FlashTimer
+            );
+        }
+        prevHudState = msg;
+    }
+
+    function applyAnnouncement(msg) {
+        if (announcementTimer) {
+            clearTimeout(announcementTimer);
+            announcementTimer = null;
+        }
+        hudAnnouncement.innerHTML = '';
+        hudAnnouncement.className = 'visible placement-' + msg.placement;
+        const panel = document.createElement('div');
+        panel.className = 'ann-panel panel-' + msg.panel_style;
+        const textEl = document.createElement('div');
+        textEl.className = 'ann-text';
+        textEl.style.color = `rgb(${msg.text_color[0]},${msg.text_color[1]},${msg.text_color[2]})`;
+        textEl.textContent = msg.text;
+        panel.appendChild(textEl);
+        hudAnnouncement.appendChild(panel);
+        announcementTimer = setTimeout(() => {
+            hudAnnouncement.classList.replace('visible', 'hidden');
+            announcementTimer = null;
+        }, msg.hold_seconds * 1000);
+    }
+
     function connect() {
         ws = new WebSocket('ws://localhost:8765');
 
@@ -1294,6 +1539,14 @@
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             statusEl.style.opacity = '1';
+            if (msg.type === 'hud_state') {
+                applyHudState(msg);
+                return;
+            }
+            if (msg.type === 'announcement') {
+                applyAnnouncement(msg);
+                return;
+            }
             if (msg.type === 'turn_state') {
                 if (msg.turn) {
                     setActiveTurn(msg.turn);
