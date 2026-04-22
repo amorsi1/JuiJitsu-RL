@@ -11,19 +11,28 @@ from .position_server import PositionServer
 
 
 class Visualizer3D:
-    def __init__(self, host: str = 'localhost', port: int = 8765, open_browser: bool = True):
+    def __init__(
+        self,
+        host: str = 'localhost',
+        port: int = 8765,
+        open_browser: bool = True,
+        turn_delay: float = 0.0,
+    ):
         self.server = PositionServer(host=host, port=port)
         self.server.load_data()
         self._last_node_id = None
         self.game_ref = None
+        self.turn_delay = turn_delay
         self.server.start()
         # Give the server a moment to bind
         time.sleep(0.3)
         if open_browser:
             viewer_path = os.path.join(os.path.dirname(__file__), 'viewer', 'index.html')
             webbrowser.open('file://' + os.path.abspath(viewer_path))
-            # Wait for the browser to connect
-            time.sleep(1.0)
+            connected = self.server.wait_for_connection(timeout=15.0)
+            if not connected:
+                # Continue gameplay even when no viewer connects.
+                pass
 
     def set_turn(self, active_turn: str):
         self.server.set_turn(active_turn)
@@ -72,6 +81,8 @@ class Visualizer3D:
             self.server.send_position(node_id, turn=active_turn)
         self._last_node_id = node_id
         self._broadcast_hud()
+        if self.turn_delay > 0:
+            time.sleep(self.turn_delay)
 
     def close(self):
         self.server.stop()
