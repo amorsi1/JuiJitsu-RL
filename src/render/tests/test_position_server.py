@@ -117,6 +117,19 @@ def test_client_removed_on_disconnect(server):
     asyncio.run(_test())
 
 
+def test_wait_for_connection_times_out_without_clients(server):
+    assert server.wait_for_connection(timeout=0.05) is False
+
+
+def test_wait_for_connection_returns_true_after_connect(server):
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}'):
+            await asyncio.sleep(0.1)
+            assert server.wait_for_connection(timeout=0.2) is True
+
+    asyncio.run(_test())
+
+
 # --- send_position ---
 
 def test_send_position_delivers_message(server):
