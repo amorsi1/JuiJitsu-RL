@@ -7,7 +7,7 @@ from Game.gym_env import build_action_edge_maps, build_obs
 from Game.play_game import Game
 
 
-def _load_maskable_ppo(model_path: str | Path):
+def _load_maskable_ppo(model_path: str | Path) -> "MaskablePPO":
     from sb3_contrib import MaskablePPO
 
     return MaskablePPO.load(str(model_path))

@@ -121,7 +121,7 @@ class PositionServer:
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(self._turn_message()), self._loop)
 
-    def send_legal_moves(self, current_node: int, moves: List[dict]):
+    def send_legal_moves(self, current_node: int, moves: List[dict]) -> None:
         """Broadcast legal moves for the current human turn."""
         payload = {
             'type': 'legal_moves',
