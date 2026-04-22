@@ -15,6 +15,7 @@ class Visualizer3D:
         self.server = PositionServer(host=host, port=port)
         self.server.load_data()
         self._last_node_id = None
+        self.game_ref = None
         self.server.start()
         # Give the server a moment to bind
         time.sleep(0.3)
@@ -26,6 +27,22 @@ class Visualizer3D:
 
     def set_turn(self, active_turn: str):
         self.server.set_turn(active_turn)
+
+    def _broadcast_hud(self) -> None:
+        if self.game_ref is None:
+            return
+        game = self.game_ref
+        try:
+            node_id = game.game_state.current_node
+            position_name = game.game_state.board.get_node_data(node_id).get('description', '')
+        except (AttributeError, KeyError):
+            position_name = ''
+        self.server.send_hud_state(
+            turn_number=getattr(game, 'turn_count', 0),
+            position_name=position_name,
+            p1_points=getattr(game.player1, 'points', 0) if game.player1 else 0,
+            p2_points=getattr(game.player2, 'points', 0) if game.player2 else 0,
+        )
 
     def update(
         self,
@@ -54,6 +71,7 @@ class Visualizer3D:
         else:
             self.server.send_position(node_id, turn=active_turn)
         self._last_node_id = node_id
+        self._broadcast_hud()
 
     def close(self):
         self.server.stop()
