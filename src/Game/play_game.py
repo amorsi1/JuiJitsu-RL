@@ -148,6 +148,7 @@ class Game:
         if visualize_3d:
             from render.visualizer3d import Visualizer3D
             self.visualizer = Visualizer3D(turn_delay=turn_delay)
+            self.visualizer.game_ref = self
 
     def choose_other_player(self, player: Player) -> Player:
         if player is self.player1:
