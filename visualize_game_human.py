@@ -41,11 +41,10 @@ def main() -> None:
 
     if game.winner is not None:
         winner_index = 0 if game.winner is game.player1 else 1
-        win_type = "points" if game.turn_count >= args.max_turns else "submission"
         game.visualizer.server.send_announcement(
             kind="win",
             winner_index=winner_index,
-            win_type=win_type,
+            win_type=game.win_reason,
         )
 
 
