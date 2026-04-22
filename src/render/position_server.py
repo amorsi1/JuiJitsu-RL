@@ -132,6 +132,47 @@ class PositionServer:
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
 
+    def send_hud_state(
+        self,
+        turn_number: int,
+        position_name: str,
+        p1_points: int,
+        p2_points: int,
+    ) -> None:
+        payload = {
+            'type': 'hud_state',
+            'turn_number': turn_number,
+            'position_name': position_name,
+            'p1_points': p1_points,
+            'p2_points': p2_points,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def send_announcement(
+        self,
+        kind: str,
+        winner_index: int | None = None,
+        win_type: str | None = None,
+    ) -> None:
+        from render.hud_announcements import AnnouncementEvent, build_announcement
+        spec = build_announcement(
+            AnnouncementEvent(kind=kind, winner_index=winner_index, win_type=win_type)
+        )
+        payload = {
+            'type': 'announcement',
+            'text': spec.text,
+            'kind': spec.kind,
+            'text_color': list(spec.text_color),
+            'hold_seconds': spec.hold_seconds,
+            'placement': spec.placement,
+            'panel_style': spec.panel_style,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
     def set_turn(self, turn: str):
         """Store and broadcast whose turn it is."""
         if turn not in {'blue', 'red'}:
