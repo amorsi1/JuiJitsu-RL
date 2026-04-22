@@ -128,6 +128,7 @@ class Game:
         name: str,
         max_turns: int = 100,
         visualize_3d: bool = False,
+        turn_delay: float = 0.0,
         logger: logging.Logger | None = None,
     ):
         self.name = name
@@ -146,7 +147,7 @@ class Game:
         self.visualizer = None
         if visualize_3d:
             from render.visualizer3d import Visualizer3D
-            self.visualizer = Visualizer3D()
+            self.visualizer = Visualizer3D(turn_delay=turn_delay)
 
     def choose_other_player(self, player: Player) -> Player:
         if player is self.player1:
