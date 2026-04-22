@@ -1036,7 +1036,7 @@
         const currentNodeId = String(msg.current_node);
         const centerGraph = graphCenterInGraphSpace();
         const currentNode = ensureOverlayNode(currentNodeId, {
-            label: 'Current',
+            label: truncateLabel(currentPositionName) || `Node ${currentNodeId}`,
             x: centerGraph.x,
             y: centerGraph.y,
             transition_id: null
@@ -1051,7 +1051,7 @@
         currentNode.current = true;
         currentNode.selectable = false;
         currentNode.historical = false;
-        currentNode.label = 'Current';
+        currentNode.label = truncateLabel(currentPositionName) || `Node ${currentNodeId}`;
         currentNode.transition_id = null;
         overlayState.currentNodeId = currentNodeId;
 
@@ -1148,7 +1148,7 @@
         toNode.current = true;
         toNode.selectable = false;
         toNode.historical = false;
-        toNode.label = 'Current';
+        toNode.label = truncateLabel(currentPositionName) || `Node ${toId}`;
         overlayState.currentNodeId = toId;
 
         overlayState.activeMoveIds.clear();
@@ -1452,6 +1452,7 @@
     const blueTurnButton = document.getElementById('blueTurnButton');
     const redTurnButton = document.getElementById('redTurnButton');
     let prevHudState = null;
+    let currentPositionName = null;
     let p1FlashTimer = null;
     let p2FlashTimer = null;
     let announcementTimer = null;
@@ -1483,6 +1484,14 @@
     function applyHudState(msg) {
         hudTurnNumber.textContent = msg.turn_number;
         hudPositionName.textContent = msg.position_name;
+        currentPositionName = msg.position_name;
+        if (overlayState.initialized && overlayState.currentNodeId) {
+            const currentNode = overlayState.nodesById.get(overlayState.currentNodeId);
+            if (currentNode) {
+                currentNode.label = truncateLabel(currentPositionName);
+                renderOverlayData();
+            }
+        }
         const prevP1 = prevHudState?.p1_points ?? null;
         const prevP2 = prevHudState?.p2_points ?? null;
         hudP1Score.textContent = 'P1: ' + msg.p1_points;
