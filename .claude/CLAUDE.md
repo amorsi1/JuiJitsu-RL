@@ -22,6 +22,7 @@ uv run pytest tests/                         # Core game/graph tests
 uv run pytest src/Game/tests/               # Gym env + registration + SB3 tests
 uv run pytest src/render/tests/              # Visualization tests
 uv run pytest tests/test_position.py::test_swap_players_positions  # Single test
+uv run pytest src/Game/tests/test_human_player.py src/Game/tests/test_sb3_strategy.py src/render/tests/test_position_server.py  # Human UI + protocol
 ```
 
 Environment variables are loaded via `python-dotenv`. Copy `.env.template` to `.env` and set `GRAPH_FILES_DIR` to the path of the `Graph/files/` directory. The graph constructor uses this variable to locate GrappleMap JSON data.
@@ -59,6 +60,10 @@ Classes in dependency order:
 - **`Game`** — orchestrates turns; players alternate selecting from legal outgoing edges filtered by their `top`/`bottom` position; game ends on tap, terminal win state, or max turns
 - **`Simulation`** — runs N games in parallel via `ThreadPoolExecutor`
 
+`Player.strategy` can be either:
+- a string strategy key (currently `random`)
+- a callable that accepts `possible_moves: list[tuple[int, dict]]` and returns a selected move tuple
+
 Move legality is based on the `top`/`bottom` edge attributes relative to the acting player's position. When an edge has `swaps_players=True`, the top/bottom assignments flip after the move.
 
 `play_turn()` always leaves the game in a playable state via `ensure_playable_state()`, called after `switch_players()`. This handles two post-turn edge cases: dead-end nodes (reinitialize) and positions where all outgoing edges require the opposite player's role (switch again). Since players have opposite positions, at most one extra switch is needed for non-dead-end nodes.
@@ -79,6 +84,10 @@ Move legality is based on the `top`/`bottom` edge attributes relative to the act
 `q_learning()` is the active standalone training function. It uses epsilon-greedy exploration with configurable decay (`epsilon`, `epsilon_min`, `epsilon_decay` params). `QLearningAgent` is an incomplete class-based wrapper — `_initialize_state_space` still references `self.board` (should be `self.env.G`) and is not used for training.
 
 `action_masks()` is the public interface for sb3-contrib's MaskablePPO (delegates to `_get_action_mask()`).
+
+Reusable helper functions are module-level for cross-module reuse:
+- `build_action_edge_maps(graph)` — edge-ID/action-index mapping used by `BJJEnv` and SB3 strategy adapter
+- `build_obs(game_state, player, turns_left, other_player)` — canonical flat observation builder
 
 `check_env(BJJEnv())` passes cleanly as of 2026-03-28.
 
@@ -110,6 +119,18 @@ Key design details:
 - **Training**: `model.learn(total_timesteps=N, use_masking=True)`
 - **Prediction**: `model.predict(obs, action_masks=masks)` — masks forwarded through policy to distribution.
 
+### 3d. Human + SB3 Strategy Adapters (`Game/human_player.py`, `Game/sb3_strategy.py`)
+
+- `make_human_strategy(server, game_state)`:
+  - sends current legal moves via `PositionServer.send_legal_moves(...)`
+  - blocks on a queue until the browser sends `move_selected`
+  - validates selected node against legal `possible_moves`
+- `make_sb3_strategy(model_path, game)`:
+  - loads a `MaskablePPO` checkpoint
+  - builds obs from live `Game` state using `build_obs(...)`
+  - builds action mask from current `possible_moves`
+  - chooses a legal move from `model.predict(..., action_masks=mask, deterministic=True)`
+
 ### 4. Visualization (`render/`)
 
 **Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D figures using pygame with orthographic XY projection. Features: z-depth shading (closer parts brighter, 0.4–1.0 brightness range), anatomical segment widths from JS viewer proportions (`SEGMENT_DEFS` with `radius_center`), proportional joint radii (`JOINT_RADII`), and painter's algorithm draw order (back-to-front across both players for correct occlusion). Uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and 28-segment connectivity with `SegmentDef` NamedTuples ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
@@ -125,7 +146,21 @@ HUD layout (shared between human and graph render modes via `draw_hud_overlay`):
 
 Layout stability features: existing nodes are pinned via `spring_layout(fixed=...)` so they never move after placement. New nodes are seeded at the angle that maximizes separation from the parent's existing neighbors (`_best_angle`), creating natural branching. Viewport only grows (never shrinks except on prune/reset) with uniform-scale screen mapping. Dim structural edges from the source graph (`source_graph` param, passed as `self.G` from BJJEnv) show connections between visible nodes that weren't traversed, giving topological context. New nodes animate in via ease-out interpolation over ~500ms (12 frames at 24fps).
 
-**Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py` and `visualize_game_3d.py` at the repo root. Independent of `render_mode`.
+**Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py`, `visualize_game_3d.py`, and `visualize_game_human.py` at the repo root. Independent of `render_mode`.
+
+`visualize_game_human.py` starts a human-vs-agent match where the human side chooses moves from a clickable browser overlay:
+- `--human-side {p1,p2}`: choose whether the human controls player 1 (red) or player 2 (blue)
+- `--agent-type {random,sb3}`: random opponent (default) or MaskablePPO checkpoint
+- `--model-path PATH`: required when `--agent-type sb3`
+
+`position_server.py` protocol additions for this flow:
+- outbound `legal_moves`: `{type, current_node, moves:[{to_node, transition_id, description}]}`
+- inbound `move_selected`: `{type: "move_selected", to_node}`
+
+`viewer/index.html` human-turn overlay behavior:
+- D3 force-layout graph overlay is rendered on `legal_moves`
+- click sends `move_selected`
+- overlay is cleared on `position`/`transition` so animation remains unobstructed between turns
 
 ## Data Files
 

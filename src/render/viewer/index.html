@@ -7,10 +7,248 @@
         html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
         #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            z-index: 9;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px 20px 6px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        #hudTurnRow {
+            text-align: center;
+            font-size: 20px;
+            line-height: 1;
+            color: rgb(240, 240, 240);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudPositionName {
+            text-align: center;
+            font-size: 15px;
+            line-height: 1;
+            color: rgb(230, 230, 230);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudScoreRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        #hudP1Score {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Score {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudFlashRow {
+            height: 18px;
+            font-size: 15px;
+            line-height: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #hudP1Flash {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Flash {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudAnnouncement {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            display: flex;
+            transition: opacity 200ms ease;
+        }
+        #hudAnnouncement.hidden {
+            opacity: 0;
+        }
+        #hudAnnouncement.visible {
+            opacity: 1;
+        }
+        #hudAnnouncement.placement-center {
+            align-items: center;
+            justify-content: center;
+        }
+        #hudAnnouncement.placement-upper_third {
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 33vh;
+            box-sizing: border-box;
+        }
+        .ann-panel {
+            padding: 14px 22px;
+            border-radius: 10px;
+        }
+        .panel-celebration {
+            background: rgba(245, 196, 66, 0.95);
+            border: 2px solid rgb(214, 118, 32);
+            box-shadow: 0 8px 24px rgba(40, 24, 8, 0.5);
+        }
+        .panel-text_only {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+        }
+        .ann-text {
+            font-family: monospace;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.1;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #graphOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 8;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 180ms ease;
+        }
+        #graphOverlay.visible {
+            opacity: 1;
+        }
+        #graphOverlay .graph-link {
+            stroke: rgba(255, 255, 255, 0.45);
+            stroke-width: 2;
+            marker-end: url(#graphArrow);
+        }
+        #graphOverlay .graph-link.historical {
+            opacity: 0.12;
+        }
+        #graphOverlay .graph-link.dimmed {
+            opacity: 0.16;
+        }
+        #graphOverlay .graph-node {
+            fill: #8ec5ff;
+            stroke: rgba(6, 18, 39, 0.95);
+            stroke-width: 2;
+            opacity: 0.35;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: opacity 140ms ease, transform 140ms ease;
+        }
+        #graphOverlay .graph-node.selectable {
+            opacity: 0.88;
+        }
+        #graphOverlay .graph-node:hover {
+            opacity: 1;
+        }
+        #graphOverlay .graph-node.current {
+            fill: #ffd88f;
+            opacity: 0.92;
+            cursor: default;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-node.selected {
+            opacity: 1;
+            fill: #ffac64;
+        }
+        #graphOverlay .graph-node.historical {
+            fill: #6f8298;
+            opacity: 0.12;
+            cursor: default;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-node.dimmed,
+        #graphOverlay .graph-label.dimmed {
+            opacity: 0.1;
+        }
+        #graphOverlay .graph-label {
+            fill: rgba(255, 255, 255, 0.88);
+            font-family: monospace;
+            font-size: 12px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-label.historical {
+            display: none;
+        }
+        #graphOverlay .continuity-arrow {
+            stroke: rgba(255, 220, 100, 0.92);
+            stroke-width: 2.5;
+            fill: none;
+        }
         #turnControl {
             position: fixed;
-            top: 10px;
-            right: 10px;
+            top: calc(100px + 8px);
+            right: 20px;
             z-index: 10;
             display: flex;
             flex-direction: column;
@@ -62,9 +300,24 @@
         }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
+    <div id="hud">
+      <div id="hudTurnRow">Turn <span id="hudTurnNumber">-</span></div>
+      <div id="hudPositionName">-</div>
+      <div id="hudScoreRow">
+        <span id="hudP1Score">P1: 0</span>
+        <span id="hudP2Score">P2: 0</span>
+      </div>
+      <div id="hudFlashRow">
+        <span id="hudP1Flash"></span>
+        <span id="hudP2Flash"></span>
+      </div>
+    </div>
+    <div id="hudAnnouncement" class="hidden"></div>
+    <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
     <div id="turnControl">
         <div id="turnLabel">Turn</div>
@@ -260,6 +513,667 @@
     let lastKeyframe = null;     // last settled keyframe in world space
     const queuedFrames = [];     // transformed keyframes waiting to be played
     let animK = 0;               // interpolation factor [0,1) to the next queued keyframe
+    const graphOverlay = document.getElementById('graphOverlay');
+    let overlayEpoch = 0;
+    let lastTransitionToNodeId = null;
+
+    function createOverlayState() {
+        return {
+            initialized: false,
+            svg: null,
+            defs: null,
+            clipRect: null,
+            group: null,
+            linkLayer: null,
+            nodeLayer: null,
+            labelLayer: null,
+            nodesById: new Map(),
+            linksByKey: new Map(),
+            currentNodeId: null,
+            activeMoveIds: new Set(),
+            pendingSelectedId: null,
+            panX: 0,
+            panY: 0,
+            graphSim: null,
+            agentSeedIndex: 0,
+            moveCommitted: false,
+            nodeSel: null,
+            linkSel: null,
+            labelSel: null,
+            renderNodes: [],
+            renderLinks: [],
+            panAnimId: 0
+        };
+    }
+
+    let overlayState = createOverlayState();
+
+    function truncateLabel(text, maxLen = 28) {
+        if (!text) return '';
+        if (text.length <= maxLen) return text;
+        return text.slice(0, maxLen - 1) + '...';
+    }
+
+    function overlayCenter() {
+        return { x: window.innerWidth * 0.28, y: window.innerHeight / 2 };
+    }
+
+    function overlayWindowRect() {
+        const center = overlayCenter();
+        const width = window.innerWidth * 0.48;
+        const height = window.innerHeight * 0.74;
+        return {
+            left: center.x - width / 2,
+            right: center.x + width / 2,
+            top: center.y - height / 2,
+            bottom: center.y + height / 2,
+            width,
+            height
+        };
+    }
+
+    function overlayNodeRadius(node) {
+        return node.current ? 19 : 15;
+    }
+
+    function overlayLinkKey(sourceId, targetId) {
+        return `${sourceId}->${targetId}`;
+    }
+
+    function resizeOverlayCanvas() {
+        graphOverlay.setAttribute('width', window.innerWidth);
+        graphOverlay.setAttribute('height', window.innerHeight);
+    }
+
+    function updateOverlayClipRect() {
+        if (!overlayState.initialized || !overlayState.clipRect) return;
+        const rect = overlayWindowRect();
+        overlayState.clipRect
+            .attr('x', rect.left)
+            .attr('y', rect.top)
+            .attr('width', rect.width)
+            .attr('height', rect.height);
+    }
+
+    function applyOverlayPan() {
+        if (!overlayState.initialized || !overlayState.group) return;
+        overlayState.group.attr('transform', `translate(${overlayState.panX},${overlayState.panY})`);
+    }
+
+    function graphCenterInGraphSpace() {
+        const center = overlayCenter();
+        return {
+            x: center.x - overlayState.panX,
+            y: center.y - overlayState.panY
+        };
+    }
+
+    function centerOverlayOnNode(node) {
+        if (!node) return;
+        overlayState.panAnimId += 1;
+        const center = overlayCenter();
+        overlayState.panX = center.x - node.x;
+        overlayState.panY = center.y - node.y;
+        applyOverlayPan();
+    }
+
+    function removeContinuityArrow() {
+        if (!overlayState.initialized || !overlayState.group) return;
+        overlayState.group.selectAll('.continuity-arrow').remove();
+    }
+
+    function resetOverlayScene() {
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+        d3.select(graphOverlay).selectAll('*').remove();
+        graphOverlay.classList.remove('visible');
+        overlayState = createOverlayState();
+    }
+
+    function overlayTick() {
+        if (!overlayState.initialized) return;
+        if (overlayState.linkSel) {
+            overlayState.linkSel.each(function(d) {
+                const source = d.source;
+                const target = d.target;
+                if (!source || !target) return;
+                const dx = target.x - source.x;
+                const dy = target.y - source.y;
+                const dist = Math.hypot(dx, dy) || 1;
+                const sr = overlayNodeRadius(source);
+                const tr = overlayNodeRadius(target);
+                d3.select(this)
+                    .attr('x1', source.x + dx / dist * sr)
+                    .attr('y1', source.y + dy / dist * sr)
+                    .attr('x2', target.x - dx / dist * tr)
+                    .attr('y2', target.y - dy / dist * tr);
+            });
+        }
+        if (overlayState.nodeSel) {
+            overlayState.nodeSel
+                .attr('cx', (d) => d.x)
+                .attr('cy', (d) => d.y);
+        }
+        if (overlayState.labelSel) {
+            overlayState.labelSel
+                .attr('x', (d) => d.x)
+                .attr('y', (d) => d.y + 32);
+        }
+    }
+
+    function ensureOverlayScene() {
+        resizeOverlayCanvas();
+        if (overlayState.initialized) {
+            updateOverlayClipRect();
+            return;
+        }
+
+        overlayState.svg = d3.select(graphOverlay);
+        overlayState.defs = overlayState.svg.append('defs');
+
+        const clipPath = overlayState.defs.append('clipPath')
+            .attr('id', 'graphHistoryWindow');
+        overlayState.clipRect = clipPath.append('rect');
+        updateOverlayClipRect();
+
+        overlayState.defs.append('marker')
+            .attr('id', 'graphArrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 10)
+            .attr('refY', 0)
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', 'rgba(255, 255, 255, 0.55)');
+
+        overlayState.defs.append('marker')
+            .attr('id', 'continuityArrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 10)
+            .attr('refY', 0)
+            .attr('markerWidth', 7)
+            .attr('markerHeight', 7)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', 'rgba(255,220,100,0.9)');
+
+        // Outer group: holds only the clip, no transform — so the clipPath rect
+        // is evaluated in SVG/screen space (not in the panned graph space).
+        const clipGroup = overlayState.svg.append('g')
+            .attr('clip-path', 'url(#graphHistoryWindow)');
+        // Inner group: holds only the pan transform, no clip-path.
+        overlayState.group = clipGroup.append('g')
+            .attr('class', 'graph-group');
+        overlayState.linkLayer = overlayState.group.append('g').attr('class', 'graph-links');
+        overlayState.nodeLayer = overlayState.group.append('g').attr('class', 'graph-nodes');
+        overlayState.labelLayer = overlayState.group.append('g').attr('class', 'graph-labels');
+        applyOverlayPan();
+
+        overlayState.graphSim = d3.forceSimulation([])
+            .force('link', d3.forceLink([]).id((d) => d.id).distance(150).strength(0.72))
+            .force('charge', d3.forceManyBody().strength(-420))
+            .force('collide', d3.forceCollide(30))
+            .on('tick', overlayTick);
+
+        overlayState.initialized = true;
+    }
+
+    function ensureOverlayNode(nodeId, options = {}) {
+        const id = String(nodeId);
+        let node = overlayState.nodesById.get(id);
+        if (!node) {
+            const center = graphCenterInGraphSpace();
+            node = {
+                id,
+                label: options.label || (`Node ${id}`),
+                x: options.x !== undefined ? options.x : center.x,
+                y: options.y !== undefined ? options.y : center.y,
+                current: false,
+                selectable: false,
+                historical: true,
+                transition_id: options.transition_id ?? null,
+                lastSeenEpoch: overlayEpoch
+            };
+            overlayState.nodesById.set(id, node);
+        }
+
+        if (options.label !== undefined) node.label = options.label;
+        if (options.transition_id !== undefined) node.transition_id = options.transition_id;
+        if (options.x !== undefined && node.x == null) node.x = options.x;
+        if (options.y !== undefined && node.y == null) node.y = options.y;
+        node.lastSeenEpoch = overlayEpoch;
+        return node;
+    }
+
+    function ensureOverlayLink(sourceId, targetId) {
+        const source = String(sourceId);
+        const target = String(targetId);
+        const key = overlayLinkKey(source, target);
+        let link = overlayState.linksByKey.get(key);
+        if (!link) {
+            link = {
+                key,
+                source,
+                target,
+                historical: true,
+                selectedPath: false
+            };
+            overlayState.linksByKey.set(key, link);
+        }
+        return link;
+    }
+
+    function pinCurrentNode() {
+        const center = graphCenterInGraphSpace();
+        for (const node of overlayState.nodesById.values()) {
+            if (node.current) {
+                node.fx = center.x;
+                node.fy = center.y;
+            } else {
+                node.fx = null;
+                node.fy = null;
+            }
+        }
+    }
+
+    function buildOverlayRenderLinks() {
+        const links = [];
+        for (const link of overlayState.linksByKey.values()) {
+            const source = overlayState.nodesById.get(String(link.source));
+            const target = overlayState.nodesById.get(String(link.target));
+            if (!source || !target) continue;
+            links.push({
+                key: link.key,
+                source,
+                target,
+                historical: link.historical,
+                selectedPath: link.selectedPath
+            });
+        }
+        return links;
+    }
+
+    function pruneOffscreenHistory() {
+        if (!overlayState.initialized) return;
+        const rect = overlayWindowRect();
+
+        for (const [id, node] of overlayState.nodesById.entries()) {
+            if (node.current || node.selectable) continue;
+            const radius = overlayNodeRadius(node);
+            const screenX = node.x + overlayState.panX;
+            const screenY = node.y + overlayState.panY;
+            const outside = (
+                screenX + radius < rect.left ||
+                screenX - radius > rect.right ||
+                screenY + radius < rect.top ||
+                screenY - radius > rect.bottom
+            );
+            if (outside) {
+                overlayState.nodesById.delete(id);
+                overlayState.activeMoveIds.delete(id);
+                if (overlayState.pendingSelectedId === id) {
+                    overlayState.pendingSelectedId = null;
+                }
+            }
+        }
+
+        for (const [key, link] of overlayState.linksByKey.entries()) {
+            const sourceExists = overlayState.nodesById.has(String(link.source));
+            const targetExists = overlayState.nodesById.has(String(link.target));
+            if (!sourceExists || !targetExists) {
+                overlayState.linksByKey.delete(key);
+            }
+        }
+    }
+
+    function drawContinuityArrow(sourceNode, targetNode) {
+        if (!sourceNode || !targetNode || !overlayState.initialized || !overlayState.group) return;
+        removeContinuityArrow();
+
+        const dx = targetNode.x - sourceNode.x;
+        const dy = targetNode.y - sourceNode.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const sr = overlayNodeRadius(sourceNode);
+        const tr = overlayNodeRadius(targetNode);
+        const x1 = sourceNode.x + dx / dist * sr;
+        const y1 = sourceNode.y + dy / dist * sr;
+        const x2 = targetNode.x - dx / dist * tr;
+        const y2 = targetNode.y - dy / dist * tr;
+
+        const line = overlayState.group.insert('line', ':first-child')
+            .attr('class', 'continuity-arrow')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('marker-end', 'url(#continuityArrow)');
+
+        const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+        line.attr('stroke-dasharray', length)
+            .attr('stroke-dashoffset', length)
+            .transition()
+            .duration(300)
+            .attr('stroke-dashoffset', 0);
+    }
+
+    function animateOverlayPanToNode(node, duration, onDone) {
+        if (!node) {
+            if (onDone) onDone();
+            return;
+        }
+
+        const center = overlayCenter();
+        const targetPanX = center.x - node.x;
+        const targetPanY = center.y - node.y;
+        const startPanX = overlayState.panX;
+        const startPanY = overlayState.panY;
+
+        if (!duration || duration <= 0) {
+            overlayState.panX = targetPanX;
+            overlayState.panY = targetPanY;
+            applyOverlayPan();
+            if (onDone) onDone();
+            return;
+        }
+
+        overlayState.panAnimId += 1;
+        const myAnimId = overlayState.panAnimId;
+        const start = performance.now();
+
+        function easeInOutCubic(t) {
+            return t < 0.5
+                ? 4 * t * t * t
+                : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function animate(now) {
+            if (overlayState.panAnimId !== myAnimId) return;
+            const t = Math.min((now - start) / duration, 1);
+            const e = easeInOutCubic(t);
+            overlayState.panX = startPanX + (targetPanX - startPanX) * e;
+            overlayState.panY = startPanY + (targetPanY - startPanY) * e;
+            applyOverlayPan();
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else if (onDone) {
+                onDone();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    function onOverlayNodeClick(event, node) {
+        if (overlayState.moveCommitted || node.current || !node.selectable) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        overlayState.moveCommitted = true;
+        overlayState.pendingSelectedId = node.id;
+
+        for (const link of overlayState.linksByKey.values()) {
+            link.selectedPath = (
+                String(link.source) === overlayState.currentNodeId &&
+                String(link.target) === node.id
+            );
+        }
+        renderOverlayData();
+
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+
+        const sourceNode = overlayState.currentNodeId
+            ? overlayState.nodesById.get(overlayState.currentNodeId)
+            : null;
+        animateOverlayPanToNode(node, 900, () => {
+            pruneOffscreenHistory();
+            renderOverlayData();
+            drawContinuityArrow(sourceNode, node);
+            window.setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'move_selected', to_node: Number(node.id) }));
+                }
+            }, 220);
+        });
+    }
+
+    function renderOverlayData() {
+        if (!overlayState.initialized) return { nodes: [], links: [] };
+
+        updateOverlayClipRect();
+        applyOverlayPan();
+
+        const nodes = Array.from(overlayState.nodesById.values());
+        const links = buildOverlayRenderLinks();
+        overlayState.renderNodes = nodes;
+        overlayState.renderLinks = links;
+
+        const currentId = overlayState.currentNodeId;
+        const pendingId = overlayState.pendingSelectedId;
+        const moveCommitted = overlayState.moveCommitted;
+
+        overlayState.linkSel = overlayState.linkLayer
+            .selectAll('line.graph-link')
+            .data(links, (d) => d.key)
+            .join(
+                (enter) => enter.append('line').attr('class', 'graph-link'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .classed('historical', (d) => d.historical)
+            .classed('dimmed', (d) => {
+                if (!moveCommitted) return false;
+                return !(d.source.id === currentId && d.target.id === pendingId);
+            });
+
+        overlayState.nodeSel = overlayState.nodeLayer
+            .selectAll('circle.graph-node')
+            .data(nodes, (d) => d.id)
+            .join(
+                (enter) => enter.append('circle').attr('class', 'graph-node'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .attr('class', (d) => {
+                const classes = ['graph-node'];
+                if (d.current) classes.push('current');
+                if (d.selectable) classes.push('selectable');
+                if (d.historical) classes.push('historical');
+                if (moveCommitted && d.id === pendingId) classes.push('selected');
+                if (moveCommitted && !d.current && d.id !== pendingId) classes.push('dimmed');
+                return classes.join(' ');
+            })
+            .attr('r', (d) => overlayNodeRadius(d))
+            .style('pointer-events', (d) => (
+                !overlayState.moveCommitted && d.selectable && !d.current
+                    ? 'auto'
+                    : 'none'
+            ))
+            .on('click', onOverlayNodeClick);
+
+        overlayState.labelSel = overlayState.labelLayer
+            .selectAll('text.graph-label')
+            .data(nodes, (d) => d.id)
+            .join(
+                (enter) => enter.append('text').attr('class', 'graph-label'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .attr('class', (d) => {
+                const classes = ['graph-label'];
+                if (d.historical) classes.push('historical');
+                if (moveCommitted && !d.current && d.id !== pendingId) classes.push('dimmed');
+                return classes.join(' ');
+            })
+            .text((d) => d.label || (`Node ${d.id}`));
+
+        overlayTick();
+        graphOverlay.classList.toggle('visible', nodes.length > 0);
+        return { nodes, links };
+    }
+
+    function restartOverlaySimulation(alpha = 0.22) {
+        if (!overlayState.initialized || !overlayState.graphSim) return;
+        pinCurrentNode();
+        overlayState.graphSim.nodes(overlayState.renderNodes);
+        overlayState.graphSim.force('link').links(overlayState.renderLinks);
+        overlayState.graphSim.alpha(alpha).restart();
+    }
+
+    function renderLegalMovesOverlay(msg) {
+        ensureOverlayScene();
+        overlayEpoch += 1;
+        removeContinuityArrow();
+
+        overlayState.moveCommitted = false;
+        overlayState.pendingSelectedId = null;
+        overlayState.activeMoveIds.clear();
+
+        const currentNodeId = String(msg.current_node);
+        const centerGraph = graphCenterInGraphSpace();
+        const currentNode = ensureOverlayNode(currentNodeId, {
+            label: truncateLabel(currentPositionName) || `Node ${currentNodeId}`,
+            x: centerGraph.x,
+            y: centerGraph.y,
+            transition_id: null
+        });
+
+        for (const node of overlayState.nodesById.values()) {
+            node.current = false;
+            node.selectable = false;
+            node.historical = true;
+        }
+
+        currentNode.current = true;
+        currentNode.selectable = false;
+        currentNode.historical = false;
+        currentNode.label = truncateLabel(currentPositionName) || `Node ${currentNodeId}`;
+        currentNode.transition_id = null;
+        overlayState.currentNodeId = currentNodeId;
+
+        const moves = msg.moves || [];
+        for (let i = 0; i < moves.length; i++) {
+            const move = moves[i];
+            const moveNodeId = String(move.to_node);
+            const angle = (2 * Math.PI / Math.max(moves.length, 1)) * i - Math.PI / 2;
+            const seededX = currentNode.x + 160 * Math.cos(angle);
+            const seededY = currentNode.y + 160 * Math.sin(angle);
+
+            const targetNode = ensureOverlayNode(moveNodeId, {
+                label: truncateLabel(move.description || (`Node ${move.to_node}`)),
+                x: seededX,
+                y: seededY,
+                transition_id: move.transition_id ?? null
+            });
+            // Always place selectable nodes near the current node, even if the node
+            // existed previously with coordinates from an earlier turn's simulation.
+            targetNode.x = seededX;
+            targetNode.y = seededY;
+            targetNode.vx = 0;
+            targetNode.vy = 0;
+            if (targetNode.lastSeenEpoch !== overlayEpoch) {
+                targetNode.lastSeenEpoch = overlayEpoch;
+            }
+            targetNode.current = false;
+            targetNode.selectable = true;
+            targetNode.historical = false;
+            targetNode.label = truncateLabel(move.description || (`Node ${move.to_node}`));
+            targetNode.transition_id = move.transition_id ?? null;
+
+            overlayState.activeMoveIds.add(moveNodeId);
+            const link = ensureOverlayLink(currentNodeId, moveNodeId);
+            link.historical = false;
+            link.selectedPath = false;
+        }
+
+        for (const link of overlayState.linksByKey.values()) {
+            const isActiveTurnEdge = (
+                String(link.source) === currentNodeId &&
+                overlayState.activeMoveIds.has(String(link.target))
+            );
+            link.historical = !isActiveTurnEdge;
+            link.selectedPath = false;
+        }
+
+        centerOverlayOnNode(currentNode);
+        pruneOffscreenHistory();
+        renderOverlayData();
+        restartOverlaySimulation(0.22);
+    }
+
+    function mergeTransitionOverlay(msg) {
+        ensureOverlayScene();
+        overlayEpoch += 1;
+        removeContinuityArrow();
+
+        const fromId = String(msg.from_node);
+        const toId = String(msg.to_node);
+
+        let fromNode = overlayState.nodesById.get(fromId);
+        if (!fromNode) {
+            const center = graphCenterInGraphSpace();
+            fromNode = ensureOverlayNode(fromId, {
+                label: `Node ${fromId}`,
+                x: center.x,
+                y: center.y
+            });
+        } else {
+            fromNode.lastSeenEpoch = overlayEpoch;
+        }
+
+        let toNode = overlayState.nodesById.get(toId);
+        if (!toNode) {
+            const angle = (-Math.PI / 2) + overlayState.agentSeedIndex * (Math.PI / 3);
+            overlayState.agentSeedIndex += 1;
+            toNode = ensureOverlayNode(toId, {
+                label: `Node ${toId}`,
+                x: fromNode.x + 150 * Math.cos(angle),
+                y: fromNode.y + 150 * Math.sin(angle)
+            });
+        } else {
+            toNode.lastSeenEpoch = overlayEpoch;
+        }
+
+        ensureOverlayLink(fromId, toId);
+
+        for (const node of overlayState.nodesById.values()) {
+            node.current = false;
+            node.selectable = false;
+            node.historical = true;
+        }
+        toNode.current = true;
+        toNode.selectable = false;
+        toNode.historical = false;
+        toNode.label = truncateLabel(currentPositionName) || `Node ${toId}`;
+        overlayState.currentNodeId = toId;
+
+        overlayState.activeMoveIds.clear();
+        overlayState.pendingSelectedId = null;
+        overlayState.moveCommitted = false;
+
+        for (const link of overlayState.linksByKey.values()) {
+            const isTransitionEdge = (
+                String(link.source) === fromId &&
+                String(link.target) === toId
+            );
+            link.historical = !isTransitionEdge;
+            link.selectedPath = false;
+        }
+
+        renderOverlayData();
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+        animateOverlayPanToNode(toNode, 900, () => {
+            pruneOffscreenHistory();
+            renderOverlayData();
+            restartOverlaySimulation(0.22);
+        });
+    }
 
     function initPlayers(posData) {
         if (playerUpdaters) return; // already created
@@ -465,6 +1379,24 @@
         }
     }
 
+    // === Camera tracking (mirrors GrappleMap's tick() smoothing) ===
+    // Exponentially lerp camera.target toward the midpoint of both players' Core joints.
+    // Horizontal: 0.5% per frame. Vertical: 5% when rising, 0.5% when falling.
+    function updateCameraTarget() {
+        if (!currentPos) return;
+        const c0 = currentPos[0][Core];
+        const c1 = currentPos[1][Core];
+        const cx = (c0[0] + c1[0]) * 0.5;
+        const cy = Math.max(0, (c0[1] + c1[1]) * 0.5 - 0.5);
+        const cz = (c0[2] + c1[2]) * 0.5;
+
+        const tgt = camera.target;
+        const vspeed = cy > tgt.y ? 0.05 : 0.005;
+        tgt.x = cx * 0.005 + tgt.x * 0.995;
+        tgt.y = cy * vspeed + tgt.y * (1 - vspeed);
+        tgt.z = cz * 0.005 + tgt.z * 0.995;
+    }
+
     // === Render loop ===
     // This follows GrappleMap's live viewer model: transition messages are
     // converted into a queue of transformed world-space keyframes, then each
@@ -490,16 +1422,40 @@
             }
         }
 
+        updateCameraTarget();
         updateDisplay();
         scene.render();
     });
 
-    window.addEventListener('resize', () => engine.resize());
+    resizeOverlayCanvas();
+    window.addEventListener('resize', () => {
+        engine.resize();
+        resizeOverlayCanvas();
+        if (!overlayState.initialized) return;
+        updateOverlayClipRect();
+        if (overlayState.currentNodeId && overlayState.nodesById.has(overlayState.currentNodeId)) {
+            centerOverlayOnNode(overlayState.nodesById.get(overlayState.currentNodeId));
+        }
+        pruneOffscreenHistory();
+        renderOverlayData();
+    });
 
     // === WebSocket client ===
     const statusEl = document.getElementById('status');
+    const hudTurnNumber = document.getElementById('hudTurnNumber');
+    const hudPositionName = document.getElementById('hudPositionName');
+    const hudP1Score = document.getElementById('hudP1Score');
+    const hudP2Score = document.getElementById('hudP2Score');
+    const hudP1Flash = document.getElementById('hudP1Flash');
+    const hudP2Flash = document.getElementById('hudP2Flash');
+    const hudAnnouncement = document.getElementById('hudAnnouncement');
     const blueTurnButton = document.getElementById('blueTurnButton');
     const redTurnButton = document.getElementById('redTurnButton');
+    let prevHudState = null;
+    let currentPositionName = null;
+    let p1FlashTimer = null;
+    let p2FlashTimer = null;
+    let announcementTimer = null;
     let ws;
     let reconnectTimer;
 
@@ -517,6 +1473,69 @@
         }
     }
 
+    function showFlash(el, text, setTimer, existingTimer) {
+        if (existingTimer) clearTimeout(existingTimer);
+        el.textContent = text;
+        setTimer(setTimeout(() => {
+            el.textContent = '';
+        }, 2000));
+    }
+
+    function applyHudState(msg) {
+        hudTurnNumber.textContent = msg.turn_number;
+        hudPositionName.textContent = msg.position_name;
+        currentPositionName = msg.position_name;
+        if (overlayState.initialized && overlayState.currentNodeId) {
+            const currentNode = overlayState.nodesById.get(overlayState.currentNodeId);
+            if (currentNode) {
+                currentNode.label = truncateLabel(currentPositionName);
+                renderOverlayData();
+            }
+        }
+        const prevP1 = prevHudState?.p1_points ?? null;
+        const prevP2 = prevHudState?.p2_points ?? null;
+        hudP1Score.textContent = 'P1: ' + msg.p1_points;
+        hudP2Score.textContent = 'P2: ' + msg.p2_points;
+        if (prevP1 !== null && msg.p1_points > prevP1) {
+            showFlash(
+                hudP1Flash,
+                '+' + (msg.p1_points - prevP1) + ' pts',
+                (t) => p1FlashTimer = t,
+                p1FlashTimer
+            );
+        }
+        if (prevP2 !== null && msg.p2_points > prevP2) {
+            showFlash(
+                hudP2Flash,
+                '+' + (msg.p2_points - prevP2) + ' pts',
+                (t) => p2FlashTimer = t,
+                p2FlashTimer
+            );
+        }
+        prevHudState = msg;
+    }
+
+    function applyAnnouncement(msg) {
+        if (announcementTimer) {
+            clearTimeout(announcementTimer);
+            announcementTimer = null;
+        }
+        hudAnnouncement.innerHTML = '';
+        hudAnnouncement.className = 'visible placement-' + msg.placement;
+        const panel = document.createElement('div');
+        panel.className = 'ann-panel panel-' + msg.panel_style;
+        const textEl = document.createElement('div');
+        textEl.className = 'ann-text';
+        textEl.style.color = `rgb(${msg.text_color[0]},${msg.text_color[1]},${msg.text_color[2]})`;
+        textEl.textContent = msg.text;
+        panel.appendChild(textEl);
+        hudAnnouncement.appendChild(panel);
+        announcementTimer = setTimeout(() => {
+            hudAnnouncement.classList.replace('visible', 'hidden');
+            announcementTimer = null;
+        }, msg.hold_seconds * 1000);
+    }
+
     function connect() {
         ws = new WebSocket('ws://localhost:8765');
 
@@ -529,14 +1548,35 @@
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             statusEl.style.opacity = '1';
+            if (msg.type === 'hud_state') {
+                applyHudState(msg);
+                return;
+            }
+            if (msg.type === 'announcement') {
+                applyAnnouncement(msg);
+                return;
+            }
             if (msg.type === 'turn_state') {
                 if (msg.turn) {
                     setActiveTurn(msg.turn);
                 }
                 return;
             }
+            if (msg.type === 'legal_moves') {
+                renderLegalMovesOverlay(msg);
+                lastTransitionToNodeId = null;
+                statusEl.textContent = 'Choose a move';
+                return;
+            }
 
             if (msg.type === 'position') {
+                const nodeId = String(msg.node_id);
+                const matchesCurrent = overlayState.currentNodeId === nodeId;
+                const matchesLastTransition = lastTransitionToNodeId === nodeId;
+                if (overlayState.initialized && !matchesCurrent && !matchesLastTransition) {
+                    resetOverlayScene();
+                }
+                lastTransitionToNodeId = null;
                 const posData = msg.data;
                 if (!playerUpdaters) initPlayers(posData);
                 currentReo = zeroReo();
@@ -547,6 +1587,8 @@
                 statusEl.textContent = 'Position: node ' + msg.node_id;
                 if (msg.turn) setActiveTurn(msg.turn);
             } else if (msg.type === 'transition') {
+                mergeTransitionOverlay(msg);
+                lastTransitionToNodeId = String(msg.to_node);
                 if (!currentReo) {
                     currentReo = zeroReo();
                 }
@@ -561,6 +1603,7 @@
         ws.onclose = () => {
             statusEl.textContent = 'Disconnected — reconnecting...';
             statusEl.style.opacity = '1';
+            resetOverlayScene();
             reconnectTimer = setTimeout(connect, 2000);
         };
 

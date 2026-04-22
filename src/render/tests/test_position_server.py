@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from queue import Queue
 import pytest
 import websockets
 from render.position_server import PositionServer
@@ -116,6 +117,19 @@ def test_client_removed_on_disconnect(server):
     asyncio.run(_test())
 
 
+def test_wait_for_connection_times_out_without_clients(server):
+    assert server.wait_for_connection(timeout=0.05) is False
+
+
+def test_wait_for_connection_returns_true_after_connect(server):
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}'):
+            await asyncio.sleep(0.1)
+            assert server.wait_for_connection(timeout=0.2) is True
+
+    asyncio.run(_test())
+
+
 # --- send_position ---
 
 def test_send_position_delivers_message(server):
@@ -184,6 +198,35 @@ def test_set_turn_broadcasts_to_connected_clients(server):
 def test_set_turn_rejects_invalid_value(server):
     with pytest.raises(ValueError):
         server.set_turn('green')
+
+
+def test_send_legal_moves_delivers_message(server):
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_legal_moves(
+                current_node=1,
+                moves=[{'to_node': 2, 'transition_id': 10, 'description': 'pass'}],
+            )
+            data = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert data['type'] == 'legal_moves'
+            assert data['current_node'] == 1
+            assert data['moves'] == [{'to_node': 2, 'transition_id': 10, 'description': 'pass'}]
+
+    asyncio.run(_test())
+
+
+def test_move_selected_invokes_callback(server):
+    async def _test():
+        selected = Queue()
+        server.on_move_selected = selected.put
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps({'type': 'move_selected', 'to_node': 2}))
+            await asyncio.sleep(0.1)
+        assert selected.get(timeout=1.0) == 2
+
+    asyncio.run(_test())
 
 
 # --- send_transition ---

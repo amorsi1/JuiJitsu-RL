@@ -2,12 +2,25 @@
 WebSocket server that pushes 3D position and transition frame data to the browser viewer.
 """
 import asyncio
+import contextlib
+import errno
 import json
+import os
+import signal
+import subprocess
 import threading
 import websockets
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from render.position_loader import load_all
+
+
+def _free_port(port: int) -> None:
+    """Terminate any process listening on the given TCP port."""
+    result = subprocess.run(["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True)
+    for pid_str in result.stdout.strip().splitlines():
+        with contextlib.suppress(Exception):
+            os.kill(int(pid_str), signal.SIGTERM)
 
 
 class PositionServer:
@@ -22,6 +35,8 @@ class PositionServer:
         self._thread: Optional[threading.Thread] = None
         self._server = None
         self._stop_event: Optional[asyncio.Event] = None
+        self._connection_event = threading.Event()
+        self.on_move_selected: Optional[Callable[[int], None]] = None
 
     def load_data(self, nodes_path: str = None, transitions_path: str = None):
         self.positions, self.transition_frames = load_all(nodes_path, transitions_path)
@@ -34,6 +49,7 @@ class PositionServer:
 
     async def _handler(self, websocket):
         self._clients.add(websocket)
+        self._connection_event.set()
         try:
             async for message in websocket:
                 try:
@@ -43,8 +59,19 @@ class PositionServer:
 
                 if payload.get('type') == 'get_turn':
                     await websocket.send(self._turn_message())
+                elif payload.get('type') == 'move_selected':
+                    to_node = payload.get('to_node')
+                    if self.on_move_selected is not None:
+                        try:
+                            self.on_move_selected(int(to_node))
+                        except (TypeError, ValueError):
+                            continue
         finally:
             self._clients.discard(websocket)
+
+    def wait_for_connection(self, timeout: float = 15.0) -> bool:
+        """Block until at least one client connects."""
+        return self._connection_event.wait(timeout=timeout)
 
     async def _broadcast(self, message: str):
         if self._clients:
@@ -59,7 +86,14 @@ class PositionServer:
 
         async def serve():
             self._stop_event = asyncio.Event()
-            self._server = await websockets.serve(self._handler, self.host, self.port)
+            try:
+                self._server = await websockets.serve(self._handler, self.host, self.port)
+            except OSError as exc:
+                if exc.errno != errno.EADDRINUSE:
+                    raise
+                _free_port(self.port)
+                await asyncio.sleep(0.5)
+                self._server = await websockets.serve(self._handler, self.host, self.port)
             await self._stop_event.wait()
             self._server.close()
             await self._server.wait_closed()
@@ -92,6 +126,58 @@ class PositionServer:
         """Broadcast the active turn to all connected clients."""
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(self._turn_message()), self._loop)
+
+    def send_legal_moves(self, current_node: int, moves: List[dict]) -> None:
+        """Broadcast legal moves for the current human turn."""
+        payload = {
+            'type': 'legal_moves',
+            'current_node': current_node,
+            'moves': moves,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def send_hud_state(
+        self,
+        turn_number: int,
+        position_name: str,
+        p1_points: int,
+        p2_points: int,
+    ) -> None:
+        payload = {
+            'type': 'hud_state',
+            'turn_number': turn_number,
+            'position_name': position_name,
+            'p1_points': p1_points,
+            'p2_points': p2_points,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def send_announcement(
+        self,
+        kind: str,
+        winner_index: int | None = None,
+        win_type: str | None = None,
+    ) -> None:
+        from render.hud_announcements import AnnouncementEvent, build_announcement
+        spec = build_announcement(
+            AnnouncementEvent(kind=kind, winner_index=winner_index, win_type=win_type)
+        )
+        payload = {
+            'type': 'announcement',
+            'text': spec.text,
+            'kind': spec.kind,
+            'text_color': list(spec.text_color),
+            'hold_seconds': spec.hold_seconds,
+            'placement': spec.placement,
+            'panel_style': spec.panel_style,
+        }
+        msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
 
     def set_turn(self, turn: str):
         """Store and broadcast whose turn it is."""

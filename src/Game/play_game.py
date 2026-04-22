@@ -115,6 +115,8 @@ class Player:
 
     def choose_move(self, possible_moves: List[Tuple[int, Dict]]) -> Tuple[int, Dict]:
         assert possible_moves, "empty list of possible_moves passed to choose_move"
+        if callable(self.strategy):
+            return self.strategy(possible_moves)
         if self.strategy == 'random':
             return random.choice(possible_moves)
         # Implement other strategies here
@@ -126,6 +128,7 @@ class Game:
         name: str,
         max_turns: int = 100,
         visualize_3d: bool = False,
+        turn_delay: float = 0.0,
         logger: logging.Logger | None = None,
     ):
         self.name = name
@@ -140,10 +143,12 @@ class Game:
         self.player2: Optional[Player] = None
         self.current_player: Optional[Player] = None
         self.winner = None
+        self.win_reason: str | None = None
         self.visualizer = None
         if visualize_3d:
             from render.visualizer3d import Visualizer3D
-            self.visualizer = Visualizer3D()
+            self.visualizer = Visualizer3D(turn_delay=turn_delay)
+            self.visualizer.game_ref = self
 
     def choose_other_player(self, player: Player) -> Player:
         if player is self.player1:
@@ -234,6 +239,7 @@ class Game:
             winning_player = self.choose_other_player(self.current_player)
             self.logger.info(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
             self.winner = winning_player
+            self.win_reason = "submission"
             return True
 
         if winner:
@@ -241,6 +247,7 @@ class Game:
             winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
                                               (self.player1.is_bottom and winner == 'bottom')) else self.player2
             self.winner = winning_player
+            self.win_reason = "position"
             self.logger.info(f"{winning_player.name} won by reaching a winning position!")
             return True
 
@@ -282,9 +289,11 @@ class Game:
     def check_for_points_win(self):
         if self.player1.points > self.player2.points:
             self.winner = self.player1
+            self.win_reason = "points"
             self.logger.info(f"{self.player1.name} wins!")
         elif self.player2.points > self.player1.points:
             self.winner = self.player2
+            self.win_reason = "points"
             self.logger.info(f"{self.player2.name} wins!")
         else:
             self.logger.info("It's a tie!")
