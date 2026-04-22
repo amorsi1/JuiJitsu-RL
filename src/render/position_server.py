@@ -35,6 +35,7 @@ class PositionServer:
         self._thread: Optional[threading.Thread] = None
         self._server = None
         self._stop_event: Optional[asyncio.Event] = None
+        self._connection_event = threading.Event()
         self.on_move_selected: Optional[Callable[[int], None]] = None
 
     def load_data(self, nodes_path: str = None, transitions_path: str = None):
@@ -48,6 +49,7 @@ class PositionServer:
 
     async def _handler(self, websocket):
         self._clients.add(websocket)
+        self._connection_event.set()
         try:
             async for message in websocket:
                 try:
@@ -66,6 +68,10 @@ class PositionServer:
                             continue
         finally:
             self._clients.discard(websocket)
+
+    def wait_for_connection(self, timeout: float = 15.0) -> bool:
+        """Block until at least one client connects."""
+        return self._connection_event.wait(timeout=timeout)
 
     async def _broadcast(self, message: str):
         if self._clients:
