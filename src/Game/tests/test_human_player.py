@@ -50,11 +50,31 @@ def test_make_human_strategy_raises_for_illegal_selection() -> None:
     server = StubPositionServer()
 
     strategy = make_human_strategy(server, game_state)
-    possible_moves = [(11, {"id": 101, "description": "sweep"})]
+    # Need 2+ moves so the validation path is reached (single-move is auto-selected)
+    possible_moves = [
+        (11, {"id": 101, "description": "sweep"}),
+        (12, {"id": 202, "description": "pass"}),
+    ]
 
     server.on_move_selected(999)
     with pytest.raises(ValueError, match="not among legal moves"):
         strategy(possible_moves)
+
+
+def test_make_human_strategy_auto_selects_sole_move() -> None:
+    graph = nx.DiGraph()
+    graph.add_node(10, outgoing=[])
+    game_state = GameState(Board(graph))
+    game_state.current_node = 10
+    server = StubPositionServer()
+
+    strategy = make_human_strategy(server, game_state)
+    only_move = (11, {"id": 101, "description": "sweep"})
+
+    result = strategy([only_move])
+
+    assert result == only_move
+    assert not server.sent_messages, "auto-select should skip send_legal_moves"
 
 
 def test_game_play_turn_works_with_human_strategy() -> None:
@@ -77,4 +97,7 @@ def test_game_play_turn_works_with_human_strategy() -> None:
     game.play_turn()
 
     assert game.game_state.current_node == expected_node
-    assert server.sent_messages, "human strategy should publish legal moves before blocking"
+    if len(possible_moves) > 1:
+        assert server.sent_messages, "human strategy should publish legal moves before blocking"
+    else:
+        assert not server.sent_messages, "single-move auto-select should skip send_legal_moves"
