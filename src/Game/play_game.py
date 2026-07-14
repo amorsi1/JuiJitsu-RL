@@ -240,7 +240,7 @@ class Game:
         move_description = move[1]["description"]
         if is_forced_move:
             self.logger.info(
-                f"{self.current_player.name} was forced to perform '{move_description}'"
+                f"{self.current_player.name} forced to perform '{move_description}'"
             )
         else:
             self.logger.info(f"{self.current_player.name} performed '{move_description}'")
