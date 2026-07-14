@@ -332,6 +332,80 @@ def test_send_position_node94_real_data(server_real_data):
     asyncio.run(_test())
 
 
+def test_game_config_invokes_callback(server):
+    """An inbound game_config message should invoke on_game_config with the full payload."""
+    async def _test():
+        received = Queue()
+        server.on_game_config = received.put
+        payload = {
+            'type': 'game_config',
+            'settings': {'max_turns': 20, 'turn_delay': 0.5},
+            'players': {'p1': {'type': 'human'}, 'p2': {'type': 'computer', 'policy_id': 'random'}},
+        }
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps(payload))
+            await asyncio.sleep(0.1)
+        assert received.get(timeout=1.0) == payload
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_before_connect_replayed_on_connect(server):
+    """Options stored before any client connects should be sent immediately on connect."""
+    options = {'settings': {'max_turns': {'default': 30, 'min': 1, 'max': 500}}, 'policies': []}
+    server.set_config_options(options)
+
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_options', **options}
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_while_connected_broadcasts(server):
+    """Calling set_config_options while a client is connected should broadcast the update."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            options = {'settings': {'max_turns': {'default': 15, 'min': 1, 'max': 500}}, 'policies': []}
+            server.set_config_options(options)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_options', **options}
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_none_clears_replay(server):
+    """After clearing config_options with None, newly connecting clients get nothing."""
+    options = {'settings': {'max_turns': {'default': 30, 'min': 1, 'max': 500}}, 'policies': []}
+    server.set_config_options(options)
+    server.set_config_options(None)
+
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=0.5)
+
+    asyncio.run(_test())
+
+
+def test_send_config_error_delivers_message(server):
+    """send_config_error should broadcast a config_error message to connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_config_error('bad policy id')
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_error', 'message': 'bad policy id'}
+
+    asyncio.run(_test())
+
+
 def test_send_transition_0_real_data(server_real_data):
     """Verify that real transition 0 sends valid frame data."""
     async def _test():
