@@ -18,6 +18,7 @@ class Visualizer3D:
         open_browser: bool = True,
         turn_delay: float = 0.0,
     ):
+        self.port = port
         self.server = PositionServer(host=host, port=port)
         self.server.load_data()
         self._last_node_id = None
@@ -28,7 +29,7 @@ class Visualizer3D:
         time.sleep(0.3)
         if open_browser:
             viewer_path = os.path.join(os.path.dirname(__file__), 'viewer', 'index.html')
-            webbrowser.open('file://' + os.path.abspath(viewer_path))
+            webbrowser.open('file://' + os.path.abspath(viewer_path) + f'?port={port}')
             connected = self.server.wait_for_connection(timeout=15.0)
             if not connected:
                 # Continue gameplay even when no viewer connects.
