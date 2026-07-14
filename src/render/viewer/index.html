@@ -298,6 +298,130 @@
             transform: translateY(-1px);
             box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
         }
+        /* --- Config overlay --- */
+        #configOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            background: rgba(10, 12, 26, 0.92);
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            color: #e8e8e8;
+        }
+        #configOverlay.visible {
+            display: flex;
+        }
+        #configInner {
+            display: flex;
+            flex-direction: row;
+            gap: 32px;
+            background: rgba(24, 28, 52, 0.98);
+            border: 1px solid rgba(120, 140, 200, 0.3);
+            border-radius: 12px;
+            padding: 32px 36px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+            min-width: 640px;
+            align-items: flex-start;
+        }
+        .cfgPlayerPanel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 170px;
+        }
+        .cfgPlayerTitle {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        #configP1 .cfgPlayerTitle { color: rgb(220, 60, 60); }
+        #configP2 .cfgPlayerTitle { color: rgb(60, 100, 220); }
+        .cfgRadioGroup {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .cfgRadioGroup label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .cfgPolicySelect {
+            margin-top: 6px;
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-family: monospace;
+            font-size: 13px;
+            width: 100%;
+        }
+        .cfgPolicySelect:disabled { opacity: 0.35; }
+        #cfgCenter {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 200px;
+            align-items: center;
+        }
+        #cfgTitle {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            margin-bottom: 4px;
+        }
+        .cfgSettingRow {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 100%;
+        }
+        .cfgSettingRow label {
+            font-size: 12px;
+            color: rgba(200, 200, 220, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .cfgSettingInput {
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-family: monospace;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #cfgError {
+            color: rgb(255, 100, 80);
+            font-size: 13px;
+            min-height: 18px;
+            text-align: center;
+        }
+        #cfgStart {
+            margin-top: 8px;
+            padding: 12px 32px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+        }
+        #cfgStart:hover:not(:disabled) { filter: brightness(1.12); }
+        #cfgStart:disabled { filter: saturate(0.4) brightness(0.7); cursor: default; }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
@@ -317,6 +441,33 @@
       </div>
     </div>
     <div id="hudAnnouncement" class="hidden"></div>
+    <div id="configOverlay">
+        <div id="configInner">
+            <div id="configP1" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 1</div>
+                <div class="cfgRadioGroup" id="cfgP1Radios"></div>
+                <select id="cfgP1Policy" class="cfgPolicySelect"></select>
+            </div>
+            <div id="cfgCenter">
+                <div id="cfgTitle">Configure Match</div>
+                <div class="cfgSettingRow">
+                    <label for="cfgMaxTurns">Max Turns</label>
+                    <input id="cfgMaxTurns" type="number" class="cfgSettingInput" value="30" min="1" max="500">
+                </div>
+                <div class="cfgSettingRow">
+                    <label for="cfgTurnDelay">Turn Delay (s)</label>
+                    <input id="cfgTurnDelay" type="number" class="cfgSettingInput" value="0.0" min="0" max="5" step="0.1">
+                </div>
+                <div id="cfgError"></div>
+                <button id="cfgStart">Start</button>
+            </div>
+            <div id="configP2" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 2</div>
+                <div class="cfgRadioGroup" id="cfgP2Radios"></div>
+                <select id="cfgP2Policy" class="cfgPolicySelect"></select>
+            </div>
+        </div>
+    </div>
     <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
     <div id="turnControl">
@@ -1539,8 +1690,121 @@
         }, msg.hold_seconds * 1000);
     }
 
+    const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+
+    // --- Config overlay ---
+    const configOverlay = document.getElementById('configOverlay');
+    const cfgMaxTurns = document.getElementById('cfgMaxTurns');
+    const cfgTurnDelay = document.getElementById('cfgTurnDelay');
+    const cfgError = document.getElementById('cfgError');
+    const cfgStart = document.getElementById('cfgStart');
+
+    function _buildPlayerPanel(radiosEl, policyEl, playerKey, policies) {
+        radiosEl.innerHTML = '';
+        // Human radio
+        const humanLabel = document.createElement('label');
+        const humanRadio = document.createElement('input');
+        humanRadio.type = 'radio';
+        humanRadio.name = `cfg-${playerKey}-type`;
+        humanRadio.value = 'human';
+        humanLabel.appendChild(humanRadio);
+        humanLabel.appendChild(document.createTextNode('Human'));
+        radiosEl.appendChild(humanLabel);
+        // Computer radio
+        const compLabel = document.createElement('label');
+        const compRadio = document.createElement('input');
+        compRadio.type = 'radio';
+        compRadio.name = `cfg-${playerKey}-type`;
+        compRadio.value = 'computer';
+        compRadio.checked = true;
+        compLabel.appendChild(compRadio);
+        compLabel.appendChild(document.createTextNode('Computer'));
+        radiosEl.appendChild(compLabel);
+
+        // Policy select — only computer policies
+        policyEl.innerHTML = '';
+        policies.filter(p => p.kind === 'computer').forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.label;
+            policyEl.appendChild(opt);
+        });
+
+        // Toggle select disabled state based on radio
+        function updateSelectState() {
+            policyEl.disabled = humanRadio.checked;
+        }
+        humanRadio.addEventListener('change', updateSelectState);
+        compRadio.addEventListener('change', updateSelectState);
+        updateSelectState();
+    }
+
+    function renderConfigOverlay(msg) {
+        const policies = msg.policies || [];
+        const settings = msg.settings || {};
+        // Apply settings defaults/min/max
+        if (settings.max_turns) {
+            cfgMaxTurns.value = settings.max_turns.default ?? 30;
+            cfgMaxTurns.min = settings.max_turns.min ?? 1;
+            cfgMaxTurns.max = settings.max_turns.max ?? 500;
+        }
+        if (settings.turn_delay) {
+            cfgTurnDelay.value = settings.turn_delay.default ?? 0.0;
+        }
+        // Build player panels
+        _buildPlayerPanel(
+            document.getElementById('cfgP1Radios'),
+            document.getElementById('cfgP1Policy'),
+            'p1', policies
+        );
+        _buildPlayerPanel(
+            document.getElementById('cfgP2Radios'),
+            document.getElementById('cfgP2Policy'),
+            'p2', policies
+        );
+        cfgError.textContent = '';
+        cfgStart.disabled = false;
+        cfgStart.textContent = 'Start';
+        configOverlay.classList.add('visible');
+    }
+
+    function hideConfigOverlay() {
+        configOverlay.classList.remove('visible');
+    }
+
+    function _getPlayerConfig(playerKey) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        let type = 'computer';
+        for (const r of radios) {
+            if (r.checked) { type = r.value; break; }
+        }
+        if (type === 'human') return { type: 'human' };
+        const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+        return { type: 'computer', policy_id: policyEl.value };
+    }
+
+    cfgStart.addEventListener('click', () => {
+        cfgStart.disabled = true;
+        cfgStart.textContent = 'Starting…';
+        cfgError.textContent = '';
+        const payload = {
+            type: 'game_config',
+            settings: {
+                max_turns: parseInt(cfgMaxTurns.value, 10),
+                turn_delay: parseFloat(cfgTurnDelay.value),
+            },
+            players: {
+                p1: _getPlayerConfig('p1'),
+                p2: _getPlayerConfig('p2'),
+            },
+        };
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
+    });
+
     function connect() {
-        ws = new WebSocket('ws://localhost:8765');
+        ws = new WebSocket(`ws://localhost:${wsPort}`);
 
         ws.onopen = () => {
             statusEl.textContent = 'Connected';
@@ -1551,6 +1815,16 @@
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             statusEl.style.opacity = '1';
+            if (msg.type === 'config_options') {
+                renderConfigOverlay(msg);
+                return;
+            }
+            if (msg.type === 'config_error') {
+                cfgError.textContent = msg.message;
+                cfgStart.disabled = false;
+                cfgStart.textContent = 'Start';
+                return;
+            }
             if (msg.type === 'hud_state') {
                 applyHudState(msg);
                 return;
@@ -1573,6 +1847,7 @@
             }
 
             if (msg.type === 'position') {
+                hideConfigOverlay();
                 const nodeId = String(msg.node_id);
                 const matchesCurrent = overlayState.currentNodeId === nodeId;
                 const matchesLastTransition = lastTransitionToNodeId === nodeId;
@@ -1591,6 +1866,7 @@
                 if (msg.turn) setActiveTurn(msg.turn);
                 if (msg.hud) applyHudState(msg.hud);
             } else if (msg.type === 'transition') {
+                hideConfigOverlay();
                 mergeTransitionOverlay(msg);
                 lastTransitionToNodeId = String(msg.to_node);
                 if (!currentReo) {
