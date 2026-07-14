@@ -37,6 +37,8 @@ class PositionServer:
         self._stop_event: Optional[asyncio.Event] = None
         self._connection_event = threading.Event()
         self.on_move_selected: Optional[Callable[[int], None]] = None
+        self.on_game_config: Optional[Callable[[dict], None]] = None
+        self.config_options: Optional[dict] = None
 
     def load_data(self, nodes_path: str = None, transitions_path: str = None):
         self.positions, self.transition_frames = load_all(nodes_path, transitions_path)
@@ -50,6 +52,8 @@ class PositionServer:
     async def _handler(self, websocket):
         self._clients.add(websocket)
         self._connection_event.set()
+        if self.config_options is not None:
+            await websocket.send(json.dumps({'type': 'config_options', **self.config_options}))
         try:
             async for message in websocket:
                 try:
@@ -66,6 +70,9 @@ class PositionServer:
                             self.on_move_selected(int(to_node))
                         except (TypeError, ValueError):
                             continue
+                elif payload.get('type') == 'game_config':
+                    if self.on_game_config is not None:
+                        self.on_game_config(payload)
         finally:
             self._clients.discard(websocket)
 
@@ -183,6 +190,21 @@ class PositionServer:
             'panel_style': spec.panel_style,
         }
         msg = json.dumps(payload)
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def set_config_options(self, options: Optional[dict]) -> None:
+        """Store config options and broadcast them to connected clients (None just clears)."""
+        self.config_options = options
+        if options is None:
+            return
+        msg = json.dumps({'type': 'config_options', **options})
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def send_config_error(self, message: str) -> None:
+        """Broadcast a config validation error to connected clients."""
+        msg = json.dumps({'type': 'config_error', 'message': message})
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
 
