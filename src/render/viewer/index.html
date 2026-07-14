@@ -1363,7 +1363,8 @@
                 const isLast = (i === 1);
                 queuedFrames.push({
                     pos: applyReo(startReo, frames[i - 1]),
-                    turn: isLast ? (msg.turn || null) : null
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
                 });
             }
             currentReo = composeReo(msg.from_reo, startReo);
@@ -1372,7 +1373,8 @@
                 const isLast = (i === frames.length - 1);
                 queuedFrames.push({
                     pos: applyReo(startReo, frames[i]),
-                    turn: isLast ? (msg.turn || null) : null
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
                 });
             }
             currentReo = composeReo(msg.to_reo, startReo);
@@ -1412,6 +1414,7 @@
                 const entry = queuedFrames.shift();
                 lastKeyframe = entry.pos;
                 if (entry.turn) setActiveTurn(entry.turn);
+                if (entry.hud) applyHudState(entry.hud);
             }
 
             if (queuedFrames.length > 0) {
@@ -1586,6 +1589,7 @@
                 lastKeyframe = posData;
                 statusEl.textContent = 'Position: node ' + msg.node_id;
                 if (msg.turn) setActiveTurn(msg.turn);
+                if (msg.hud) applyHudState(msg.hud);
             } else if (msg.type === 'transition') {
                 mergeTransitionOverlay(msg);
                 lastTransitionToNodeId = String(msg.to_node);
