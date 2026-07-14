@@ -107,7 +107,12 @@ class PositionServer:
         self._thread = threading.Thread(target=self._run_server, daemon=True)
         self._thread.start()
 
-    def send_position(self, node_id: int, turn: Optional[str] = None):
+    def send_position(
+        self,
+        node_id: int,
+        turn: Optional[str] = None,
+        hud: Optional[dict] = None,
+    ):
         """Send a static position (pose) for the given node."""
         if node_id not in self.positions:
             return
@@ -118,6 +123,8 @@ class PositionServer:
         }
         if turn is not None:
             payload['turn'] = turn
+        if hud is not None:
+            payload['hud'] = hud
         msg = json.dumps(payload)
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
@@ -186,9 +193,15 @@ class PositionServer:
         self.current_turn = turn
         self.send_turn_state()
 
-    def send_transition(self, transition_id: int, reverse: bool = False, turn: Optional[str] = None):
+    def send_transition(
+        self,
+        transition_id: int,
+        reverse: bool = False,
+        turn: Optional[str] = None,
+        hud: Optional[dict] = None,
+    ):
         """Send transition frame sequence for animation.
-
+        
         Wire contract: from_node/to_node are direction-corrected — they reflect the
         actual traversal direction, not the canonical record order. On a reverse
         traversal the game went canonical to_node → canonical from_node, so the fields
@@ -215,6 +228,8 @@ class PositionServer:
         }
         if turn is not None:
             payload['turn'] = turn
+        if hud is not None:
+            payload['hud'] = hud
         msg = json.dumps(payload)
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
