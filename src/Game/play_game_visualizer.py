@@ -147,7 +147,13 @@ class Game:
             move = self.current_player.choose_move(possible_moves)
             points, player_tapped, swap_players_positions = self.game_state.process_move(move)
             self.current_player.points += points
-            self.logger.info(f"{self.current_player.name} performed '{move[1]['description']}'")
+            move_description = move[1]["description"]
+            if len(possible_moves) == 1:
+                self.logger.info(
+                    f"{self.current_player.name} was forced to perform '{move_description}'"
+                )
+            else:
+                self.logger.info(f"{self.current_player.name} performed '{move_description}'")
             if points>0:
                 self.logger.info(f"Player earned {points} points for that move")
 

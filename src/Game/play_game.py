@@ -194,11 +194,30 @@ class Game:
         self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
         self.player2.is_top, self.player2.is_bottom = cache
 
+    def _is_chosen_move_forced(
+        self,
+        possible_moves: List[Tuple[int, Dict]],
+        chosen_move: Tuple[int, Dict],
+    ) -> bool:
+        if len(possible_moves) != 1:
+            return False
+        only_move = possible_moves[0]
+        if only_move == chosen_move:
+            return True
+        return (
+            only_move[0] == chosen_move[0]
+            and only_move[1].get("id") == chosen_move[1].get("id")
+        )
+
     def play_turn(self, chosen_move: Tuple[int, Dict] = None) -> bool:
-        if chosen_move:
+        possible_moves = self.game_state.get_possible_moves(
+            self.current_player.is_top,
+            self.current_player.is_bottom,
+        )
+        if chosen_move is not None:
             move = chosen_move
+            is_forced_move = self._is_chosen_move_forced(possible_moves, move)
         else:
-            possible_moves = self.game_state.get_possible_moves(self.current_player.is_top, self.current_player.is_bottom)
             if not possible_moves:
                 # if current state is a terminal node, but not associated with a win or loss
                 if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
@@ -215,9 +234,16 @@ class Game:
                     return False
             else:
                 move = self.current_player.choose_move(possible_moves)
+                is_forced_move = len(possible_moves) == 1
         points, player_tapped, swap_players_positions = self.game_state.process_move(move)
         self.current_player.points += points
-        self.logger.info(f"{self.current_player.name} performed '{move[1]['description']}'")
+        move_description = move[1]["description"]
+        if is_forced_move:
+            self.logger.info(
+                f"{self.current_player.name} was forced to perform '{move_description}'"
+            )
+        else:
+            self.logger.info(f"{self.current_player.name} performed '{move_description}'")
         next_player = self.choose_other_player(self.current_player)
         winner = self.game_state.check_winner()
         next_turn = (
