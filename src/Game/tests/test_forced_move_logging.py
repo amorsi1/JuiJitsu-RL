@@ -58,7 +58,7 @@ def test_single_legal_move_logs_forced_to_perform() -> None:
 
     game.play_turn()
 
-    assert "Player 1 was forced to perform 'move 1'" in logger.messages
+    assert "Player 1 forced to perform 'move 1'" in logger.messages
     assert "Player 1 performed 'move 1'" not in logger.messages
 
 
@@ -69,7 +69,7 @@ def test_multiple_legal_moves_logs_standard_performed() -> None:
     game.play_turn()
 
     assert "Player 1 performed 'move 1'" in logger.messages
-    assert "Player 1 was forced to perform 'move 1'" not in logger.messages
+    assert "Player 1 forced to perform 'move 1'" not in logger.messages
 
 
 def test_chosen_single_legal_move_logs_forced_to_perform() -> None:
@@ -78,4 +78,4 @@ def test_chosen_single_legal_move_logs_forced_to_perform() -> None:
 
     game.play_turn((target, dict(edge_data)))
 
-    assert "Player 1 was forced to perform 'move 1'" in logger.messages
+    assert "Player 1 forced to perform 'move 1'" in logger.messages
