@@ -3,7 +3,7 @@ import random
 import networkx as nx
 from tqdm import tqdm
 import numpy as np
-from typing import List, Tuple, Dict, Optional
+from typing import Any, List, Tuple, Dict, Optional
 from Graph.graph_constructor import construct_graph
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from Game.logging_utils import build_gameplay_logger
@@ -122,6 +122,7 @@ class Game:
         max_turns: int = 100,
         visualize_3d: bool = False,
         turn_delay: float = 0.0,
+        visualizer: Any | None = None,
         logger: logging.Logger | None = None,
     ):
         self.name = name
@@ -137,11 +138,16 @@ class Game:
         self.current_player: Optional[Player] = None
         self.winner = None
         self.win_reason: str | None = None
-        self.visualizer = None
-        if visualize_3d:
+        self._owns_visualizer: bool = visualizer is None and visualize_3d
+        if visualizer is not None:
+            self.visualizer = visualizer
+            self.visualizer.game_ref = self
+        elif visualize_3d:
             from render.visualizer3d import Visualizer3D
             self.visualizer = Visualizer3D(turn_delay=turn_delay)
             self.visualizer.game_ref = self
+        else:
+            self.visualizer = None
 
     def choose_other_player(self, player: Player) -> Player:
         if player is self.player1:
@@ -332,7 +338,7 @@ class Game:
         self.logger.info("\nGame over! Final scores:")
         self.logger.info(f"{self.player1.name}: {self.player1.points}")
         self.logger.info(f"{self.player2.name}: {self.player2.points}")
-        if self.visualizer:
+        if self.visualizer and self._owns_visualizer:
             self.visualizer.close()
 
 class Simulation:
