@@ -131,6 +131,49 @@ Key design details:
   - builds action mask from current `possible_moves`
   - chooses a legal move from `model.predict(..., action_masks=mask, deterministic=True)`
 
+### 3e. Policy Registry (`Game/policies.py`)
+
+Extensible registry for `Player.strategy` factories. All built-ins are registered at import time.
+
+Key types:
+- `PolicySpec(id, label, kind, factory, description)` — frozen dataclass; `factory: Callable[[StrategyContext], Strategy]`
+- `StrategyContext(game, server=None)` — context passed to each factory
+
+Key functions:
+- `register_policy(spec)` — raises `ValueError` on duplicate id
+- `get_policy(id)` — raises `ValueError` listing known ids on unknown
+- `available_policies()` — sorted list of all registered specs
+- `build_config_options(max_turns_default, turn_delay_default)` — JSON-ready dict with `settings` and `policies` keys (no factory field); sent to browser as `config_options` message
+- `discover_sb3_policies(models_dir: Path)` — globs `**/*.zip`, returns fresh `PolicySpec` list (id format: `sb3:<relpath-sans-ext>`); does NOT import torch/sb3 at discovery time; does NOT register (caller does)
+- `resolve_strategies(config_players, ctx)` — maps `{player_key: {"type": ..., "policy_id": ...}}` to `{player_key: Strategy}`; memoizes per policy_id so human-vs-human shares one instance
+
+Built-in policy ids: `"random"` (kind `computer`), `"human"` (kind `human`; raises if `ctx.server is None`).
+
+To add a new policy:
+```python
+from Game.policies import PolicySpec, StrategyContext, register_policy
+register_policy(PolicySpec(
+    id="my-policy", label="My Policy", kind="computer",
+    factory=lambda ctx: my_strategy_function,
+))
+```
+
+### 3f. Game Config Flow (`Game/game_config.py`)
+
+Bridges the browser config UI with game construction.
+
+- `try_apply_config(cfg, visualizer, defaults, logger) -> Game | None`:
+  - Validates/clamps `max_turns` and `turn_delay` from `cfg['settings']`
+  - Calls `resolve_strategies` before `initialize_game`
+  - On `ValueError`/`ImportError`: calls `visualizer.server.send_config_error(...)` and returns None
+  - On success: clears `on_game_config`/`config_options`, sets `visualizer.turn_delay`, calls `game.initialize_game`, assigns strategies, returns Game
+
+- `run_configured_game(visualizer, *, defaults, logger, config_source=None) -> Game`:
+  - If `config_source` given: applies directly (no browser interaction)
+  - Otherwise: broadcasts `build_config_options()` via `set_config_options`, loops on `on_game_config` queue until a valid config arrives
+
+`defaults` dict keys: `max_turns_default`, `max_turns_min`, `max_turns_max`, `turn_delay_default`.
+
 ### 4. Visualization (`render/`)
 
 **Native renderer** (`render/frame_renderer.py`): `FrameRenderer` draws 2D figures using pygame with orthographic XY projection. Features: z-depth shading (closer parts brighter, 0.4–1.0 brightness range), anatomical segment widths from JS viewer proportions (`SEGMENT_DEFS` with `radius_center`), proportional joint radii (`JOINT_RADII`), and painter's algorithm draw order (back-to-front across both players for correct occlusion). Uses `position_loader.load_positions()` (nodes.json only, 4.4 MB) and 28-segment connectivity with `SegmentDef` NamedTuples ported from the JS viewer. Supports `"human"` (pygame window) and `"rgb_array"` (numpy array) modes. Integrated into BJJEnv via `render_mode`.
@@ -146,21 +189,37 @@ HUD layout (shared between human and graph render modes via `draw_hud_overlay`):
 
 Layout stability features: existing nodes are pinned via `spring_layout(fixed=...)` so they never move after placement. New nodes are seeded at the angle that maximizes separation from the parent's existing neighbors (`_best_angle`), creating natural branching. Viewport only grows (never shrinks except on prune/reset) with uniform-scale screen mapping. Dim structural edges from the source graph (`source_graph` param, passed as `self.G` from BJJEnv) show connections between visible nodes that weren't traversed, giving topological context. New nodes animate in via ease-out interpolation over ~500ms (12 frames at 24fps).
 
-**Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py`, `visualize_game_3d.py`, and `visualize_game_human.py` at the repo root. Independent of `render_mode`.
+**Browser renderer** (`render/visualizer3d.py`): `Visualizer3D` uses `position_server.py` (WebSocket server) to stream game state to a browser viewer in real time. Entry points: `visualize_game.py`, `visualize_game_3d.py`, `visualize_game_human.py`, and `play_bjj.py` at the repo root. Independent of `render_mode`.
 
-`visualize_game_human.py` starts a human-vs-agent match where the human side chooses moves from a clickable browser overlay:
-- `--human-side {p1,p2}`: choose whether the human controls player 1 (red) or player 2 (blue)
+`Visualizer3D(port=8765, open_browser=True, ...)` appends `?port={port}` to the `file://` URL so the viewer connects to the correct server port automatically.
+
+**Config protocol** (new in `position_server.py`):
+- `set_config_options(options: dict | None)` — stores and broadcasts `{type: 'config_options', ...options}` to connected clients; `None` clears (no broadcast)
+- `send_config_error(message: str)` — broadcasts `{type: 'config_error', message}`
+- `on_game_config: Callable[[dict], None] | None` — set this to receive inbound `game_config` messages from the browser
+- `config_options: dict | None` — replayed to newly connecting clients when set before they connect
+
+`play_bjj.py` is the primary entry point for configurable matches:
+- Opens the browser config overlay automatically
+- Discovers `models/*.zip` SB3 checkpoints and makes them selectable
+- Supports `--skip-gui --p1 <policy_id> --p2 <policy_id>` to bypass the overlay
+
+`visualize_game_human.py` starts a legacy fixed-role human-vs-agent match (no config overlay):
+- `--human-side {p1,p2}`: choose which player the human controls
 - `--agent-type {random,sb3}`: random opponent (default) or MaskablePPO checkpoint
 - `--model-path PATH`: required when `--agent-type sb3`
 
-`position_server.py` protocol additions for this flow:
+`position_server.py` WebSocket protocol summary:
+- outbound `config_options`: config UI payload from `build_config_options()`
+- outbound `config_error`: error from `send_config_error()`
 - outbound `legal_moves`: `{type, current_node, moves:[{to_node, transition_id, description}]}`
+- inbound `game_config`: full config payload from browser start button
 - inbound `move_selected`: `{type: "move_selected", to_node}`
 
-`viewer/index.html` human-turn overlay behavior:
-- D3 force-layout graph overlay is rendered on `legal_moves`
-- click sends `move_selected`
-- overlay is cleared on `position`/`transition` so animation remains unobstructed between turns
+`viewer/index.html` overlay behaviors:
+- `#configOverlay` shown on `config_options`; Start button sends `game_config`; error shown on `config_error`
+- `#graphOverlay` (D3 legal-moves) shown on `legal_moves`; click sends `move_selected`
+- Both overlays cleared on `position`/`transition` messages
 
 ## Data Files
 
