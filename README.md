@@ -37,23 +37,65 @@ cp .env.template .env
 
 Set `GRAPH_FILES_DIR` in `.env` to the local path containing GrappleMap files (`nodes.json`, `transitions.json`, `tags.json`, `terminal_node_winstate.json`).
 
-## 3D Visualization Entrypoints
+## Playing a Game
 
-Baseline 3D autoplay:
+### Configurable match with browser UI (recommended)
+
+`play_bjj.py` is the primary entry point. It opens the browser and shows a config overlay where you choose policies for each player and set max turns / turn delay:
+
+```bash
+uv run python play_bjj.py
+```
+
+CLI options:
+
+```bash
+# Custom WebSocket port (useful if 8765 is in use)
+uv run python play_bjj.py --port 8766
+
+# Skip the config overlay; specify policies directly
+uv run python play_bjj.py --skip-gui --p1 random --p2 random
+
+# Skip GUI with an SB3 checkpoint (must be under models/)
+uv run python play_bjj.py --skip-gui --p1 random --p2 sb3:best
+
+# Headless (no browser)
+uv run python play_bjj.py --no-browser --skip-gui --p1 random --p2 random
+
+uv run python play_bjj.py --help
+```
+
+SB3 checkpoints are auto-discovered from `--models-dir` (default: `models/`). Any `.zip` file under that directory is available as policy id `sb3:<relpath-without-extension>` (e.g. `sb3:best`, `sb3:agents/v2`).
+
+### Adding a new agent policy
+
+```python
+from Game.policies import PolicySpec, register_policy
+
+register_policy(PolicySpec(
+    id="my-agent",
+    label="My Agent",
+    kind="computer",   # or "human"
+    factory=lambda ctx: my_strategy_callable,
+    description="Shown in the browser config overlay",
+))
+```
+
+`factory` receives a `StrategyContext(game, server)` and must return either the string `"random"` or a callable `(possible_moves: list[tuple[int, dict]]) -> tuple[int, dict]`.
+
+### 3D Visualization Entrypoints
+
+Baseline 3D autoplay (no browser UI config):
 
 ```bash
 uv run python visualize_game_3d.py
 ```
 
-Human-in-the-loop 3D play:
+Legacy fixed-role human play (no config overlay):
 
 ```bash
 uv run python visualize_game_human.py
-```
 
-Human UI options:
-
-```bash
 # Human as player 2 (blue), random opponent
 uv run python visualize_game_human.py --human-side p2
 
@@ -61,67 +103,46 @@ uv run python visualize_game_human.py --human-side p2
 uv run python visualize_game_human.py --agent-type sb3 --model-path models/best.zip
 ```
 
-CLI help:
-
-```bash
-uv run python visualize_game_human.py --help
-```
-
-## Human Player UI Design
-
-`visualize_game_human.py` wires `Game` with:
-
-- `Game.human_player.make_human_strategy(...)`: blocks `Player.choose_move(...)` until browser sends a selected destination node.
-- `Game.sb3_strategy.make_sb3_strategy(...)`: loads a MaskablePPO checkpoint and chooses legal actions using an action mask built from current `possible_moves`.
-- `render.position_server.PositionServer`: broadcasts `legal_moves` and consumes `move_selected`.
-- `render/viewer/index.html`: renders a D3 force-layout legal-moves overlay and sends click selections back over WebSocket.
-
-Behavior:
-
-- Graph overlay is shown only on human turns (on `legal_moves` message).
-- Overlay is cleared during animation updates (`position`/`transition` messages).
-- Human selection is validated against legal moves before a move is applied.
-
 ## How To Test Locally
 
-### 1) Fast automated checks for this feature
+### Automated checks
 
 ```bash
 uv run pytest \
   src/Game/tests/test_gym_env_helpers.py \
   src/Game/tests/test_player_strategy.py \
   src/Game/tests/test_human_player.py \
-  src/Game/tests/test_sb3_strategy.py \
+  src/Game/tests/test_policies.py \
+  src/Game/tests/test_game_config_flow.py \
+  src/Game/tests/test_game_visualizer_injection.py \
   src/render/tests/test_position_server.py -v
 ```
 
-### 2) Manual browser verification
+### Manual browser verification
 
 Run:
 
 ```bash
-uv run python visualize_game_human.py
+uv run python play_bjj.py
 ```
 
 Expected flow:
 
-1. Browser opens and renders the Babylon 3D scene.
-2. On non-human turns: no graph overlay is visible.
-3. On human turns: legal-moves overlay appears with spring-layout motion.
-4. Hover increases node opacity; click sends move selection.
-5. After click: non-selected nodes dim, selected node recenters, then 3D transition plays.
-6. Overlay disappears until the next human turn.
+1. Browser opens and renders the Babylon 3D scene with a config overlay.
+2. Choose player policies, max turns, and turn delay; click Start.
+3. Overlay disappears and the match begins.
+4. On human turns: D3 legal-moves overlay appears; click a node to move.
+5. After click: overlay clears, 3D transition plays, game continues.
+6. Win announcement shown at end of match.
 
-### 3) Manual SB3-opponent verification
-
-Run:
+### Manual SB3-opponent verification
 
 ```bash
-uv run python visualize_game_human.py --agent-type sb3 --model-path models/best.zip
+uv run python play_bjj.py --skip-gui --p1 human --p2 sb3:best
 ```
 
 Expected:
 
-- Same human overlay behavior.
-- Opponent turns are chosen by the checkpoint policy (no overlay shown).
+- Human overlay shown on your turns.
+- SB3 checkpoint makes moves on opponent turns (no overlay).
 
