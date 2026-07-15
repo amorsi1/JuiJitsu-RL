@@ -381,6 +381,33 @@ def test_send_config_error_delivers_message(server):
     asyncio.run(_test())
 
 
+def test_send_game_over_delivers_message(server):
+    """send_game_over should broadcast a game_over message to connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_game_over()
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'game_over'}
+
+    asyncio.run(_test())
+
+
+def test_play_again_invokes_callback(server):
+    """An inbound play_again message should invoke on_play_again."""
+    async def _test():
+        called = Queue()
+        server.on_play_again = lambda: called.put(True)
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps({'type': 'play_again'}))
+            await asyncio.sleep(0.1)
+        assert called.get(timeout=1.0) is True
+
+    asyncio.run(_test())
+
+
 def test_send_transition_0_real_data(server_real_data):
     """Verify that real transition 0 sends valid frame data."""
     async def _test():
