@@ -38,6 +38,7 @@ class PositionServer:
         self._connection_event = threading.Event()
         self.on_move_selected: Optional[Callable[[int], None]] = None
         self.on_game_config: Optional[Callable[[dict], None]] = None
+        self.on_play_again: Optional[Callable[[], None]] = None
         self.config_options: Optional[dict] = None
 
     def load_data(self, nodes_path: str = None, transitions_path: str = None):
@@ -73,6 +74,9 @@ class PositionServer:
                 elif payload.get('type') == 'game_config':
                     if self.on_game_config is not None:
                         self.on_game_config(payload)
+                elif payload.get('type') == 'play_again':
+                    if self.on_play_again is not None:
+                        self.on_play_again()
         finally:
             self._clients.discard(websocket)
 
@@ -205,6 +209,12 @@ class PositionServer:
     def send_config_error(self, message: str) -> None:
         """Broadcast a config validation error to connected clients."""
         msg = json.dumps({'type': 'config_error', 'message': message})
+        if self._loop and self._clients:
+            asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
+
+    def send_game_over(self) -> None:
+        """Broadcast a game_over message so the browser can show a Play Again button."""
+        msg = json.dumps({'type': 'game_over'})
         if self._loop and self._clients:
             asyncio.run_coroutine_threadsafe(self._broadcast(msg), self._loop)
 
