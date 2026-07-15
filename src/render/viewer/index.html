@@ -1645,6 +1645,7 @@
     let p1FlashTimer = null;
     let p2FlashTimer = null;
     let announcementTimer = null;
+    let lastGameConfig = null;
     let ws;
     let reconnectTimer;
 
@@ -1799,6 +1800,21 @@
         updateSelectState();
     }
 
+    function _applyPlayerConfig(playerKey, playerCfg) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        for (const r of radios) {
+            if (r.value === playerCfg.type) {
+                r.checked = true;
+                r.dispatchEvent(new Event('change'));
+                break;
+            }
+        }
+        if (playerCfg.type === 'computer' && playerCfg.policy_id) {
+            const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+            policyEl.value = playerCfg.policy_id;
+        }
+    }
+
     function renderConfigOverlay(msg) {
         const policies = msg.policies || [];
         const settings = msg.settings || {};
@@ -1822,6 +1838,13 @@
             document.getElementById('cfgP2Policy'),
             'p2', policies
         );
+        // Restore previous game settings if available (overrides server defaults)
+        if (lastGameConfig) {
+            cfgMaxTurns.value = lastGameConfig.settings.max_turns;
+            cfgTurnDelay.value = lastGameConfig.settings.turn_delay;
+            _applyPlayerConfig('p1', lastGameConfig.players.p1);
+            _applyPlayerConfig('p2', lastGameConfig.players.p2);
+        }
         cfgError.textContent = '';
         cfgStart.disabled = false;
         cfgStart.textContent = 'Start';
@@ -1858,6 +1881,7 @@
                 p2: _getPlayerConfig('p2'),
             },
         };
+        lastGameConfig = { settings: payload.settings, players: payload.players };
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(payload));
         }
