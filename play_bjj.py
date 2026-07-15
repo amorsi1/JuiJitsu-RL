@@ -2,6 +2,7 @@
 """Entry point for a configurable BJJ match with browser UI."""
 
 import argparse
+import threading
 import time
 from pathlib import Path
 
@@ -61,7 +62,8 @@ def main() -> None:
     }
 
     if args.skip_gui:
-        config_source: dict | None = {
+        # Non-interactive: play once and exit.
+        config_source: dict = {
             "settings": {
                 "max_turns": args.max_turns,
                 "turn_delay": args.turn_delay,
@@ -71,28 +73,43 @@ def main() -> None:
                 "p2": {"type": "computer", "policy_id": args.p2},
             },
         }
-    else:
-        config_source = None
-
-    game = run_configured_game(
-        visualizer,
-        defaults=defaults,
-        logger=logger,
-        config_source=config_source,
-    )
-
-    game.play_game()
-
-    if game.winner is not None:
-        winner_index = 0 if game.winner is game.player1 else 1
-        visualizer.server.send_announcement(
-            kind="win",
-            winner_index=winner_index,
-            win_type=game.win_reason,
+        game = run_configured_game(
+            visualizer, defaults=defaults, logger=logger, config_source=config_source
         )
+        game.play_game()
+        if game.winner is not None:
+            winner_index = 0 if game.winner is game.player1 else 1
+            visualizer.server.send_announcement(
+                kind="win",
+                winner_index=winner_index,
+                win_type=game.win_reason,
+            )
+        time.sleep(2)
+        visualizer.close()
+        return
 
-    time.sleep(2)
-    visualizer.close()
+    # GUI mode: loop, showing the config screen between games.
+    while True:
+        game = run_configured_game(
+            visualizer, defaults=defaults, logger=logger, config_source=None
+        )
+        game.play_game()
+
+        if game.winner is not None:
+            winner_index = 0 if game.winner is game.player1 else 1
+            visualizer.server.send_announcement(
+                kind="win",
+                winner_index=winner_index,
+                win_type=game.win_reason,
+            )
+
+        time.sleep(2)
+
+        play_again_event = threading.Event()
+        visualizer.server.on_play_again = lambda: play_again_event.set()
+        visualizer.server.send_game_over()
+        play_again_event.wait()
+        visualizer.server.on_play_again = None
 
 
 if __name__ == "__main__":
