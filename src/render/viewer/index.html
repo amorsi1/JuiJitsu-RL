@@ -422,6 +422,35 @@
         }
         #cfgStart:hover:not(:disabled) { filter: brightness(1.12); }
         #cfgStart:disabled { filter: saturate(0.4) brightness(0.7); cursor: default; }
+        /* --- Play Again overlay --- */
+        #playAgainOverlay {
+            display: none;
+            position: fixed;
+            bottom: 60px;
+            left: 0;
+            right: 0;
+            z-index: 22;
+            align-items: center;
+            justify-content: center;
+        }
+        #playAgainOverlay.visible {
+            display: flex;
+        }
+        #playAgainBtn {
+            padding: 14px 44px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        #playAgainBtn:hover { filter: brightness(1.15); }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
@@ -467,6 +496,9 @@
                 <select id="cfgP2Policy" class="cfgPolicySelect"></select>
             </div>
         </div>
+    </div>
+    <div id="playAgainOverlay">
+        <button id="playAgainBtn">Play Again</button>
     </div>
     <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
@@ -1742,6 +1774,15 @@
 
     const wsPort = new URLSearchParams(location.search).get('port') || '8765';
 
+    // --- Play Again overlay ---
+    const playAgainOverlay = document.getElementById('playAgainOverlay');
+    document.getElementById('playAgainBtn').addEventListener('click', () => {
+        playAgainOverlay.classList.remove('visible');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'play_again' }));
+        }
+    });
+
     // --- Config overlay ---
     const configOverlay = document.getElementById('configOverlay');
     const cfgMaxTurns = document.getElementById('cfgMaxTurns');
@@ -1865,7 +1906,12 @@
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             statusEl.style.opacity = '1';
+            if (msg.type === 'game_over') {
+                playAgainOverlay.classList.add('visible');
+                return;
+            }
             if (msg.type === 'config_options') {
+                playAgainOverlay.classList.remove('visible');
                 renderConfigOverlay(msg);
                 return;
             }
@@ -1898,6 +1944,7 @@
 
             if (msg.type === 'position') {
                 hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
                 const nodeId = String(msg.node_id);
                 const matchesCurrent = overlayState.currentNodeId === nodeId;
                 const matchesLastTransition = lastTransitionToNodeId === nodeId;
@@ -1917,6 +1964,7 @@
                 if (msg.hud) applyHudState(msg.hud);
             } else if (msg.type === 'transition') {
                 hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
                 mergeTransitionOverlay(msg);
                 lastTransitionToNodeId = String(msg.to_node);
                 if (!currentReo) {
