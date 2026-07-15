@@ -9,6 +9,7 @@ from pathlib import Path
 from Game.game_config import run_configured_game
 from Game.logging_utils import build_gameplay_logger
 from Game.policies import discover_sb3_policies, register_policy
+from Graph.graph_constructor import construct_graph
 from render.visualizer3d import Visualizer3D
 
 
@@ -32,6 +33,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     logger = build_gameplay_logger("Game.gameplay.play_bjj", to_stdout=True)
+
+    # Build the NetworkX graph in the background so the "Start Game" click is instant.
+    # Runs in parallel with Visualizer3D startup (which loads the 3D viewer data).
+    _graph_prefetch = threading.Thread(target=construct_graph, daemon=True, name="graph-prefetch")
+    _graph_prefetch.start()
 
     # Register any SB3 model checkpoints found under models_dir.
     try:

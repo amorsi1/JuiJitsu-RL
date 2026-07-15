@@ -1,10 +1,13 @@
+import copy
+import functools
 import json
 import os
+from typing import List, Tuple, Dict
+
 import networkx as nx
 from dotenv import load_dotenv
+
 from .reward import add_rewards_to_graph
-from typing import List, Tuple, Dict
-import copy
 
 load_dotenv(".env.template") # default .env template, safe to commit to repo
 load_dotenv(".env", override=True) # override if a private .env file is provided
@@ -107,9 +110,12 @@ def load_json(fpath):
     with open(fpath, 'r') as file:
         return json.load(file)
 
-def construct_graph(nodes_path = None,
-                    transitions_path = None,
-                    base_path = None) -> nx.classes.digraph.DiGraph:
+@functools.cache
+def construct_graph(
+    nodes_path: str | None = None,
+    transitions_path: str | None = None,
+    base_path: str | None = None,
+) -> nx.DiGraph:
     
     if base_path is None:
         base_path = GRAPH_FILES_DIR
