@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import random
 from typing import Any, Optional
 
 
@@ -70,6 +71,9 @@ def try_apply_config(
     visualizer.server.set_config_options(None)
     visualizer.turn_delay = turn_delay
 
+    # Reseed from OS entropy so strategy loading (e.g. SB3's set_random_seed)
+    # cannot pin the starting position to the same node on every Play Again.
+    random.seed()
     game.initialize_game("Player 1", "Player 2")
     game.player1.strategy = strategies["p1"]
     game.player2.strategy = strategies["p2"]
