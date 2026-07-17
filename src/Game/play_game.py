@@ -34,24 +34,17 @@ class GameState:
         )        
 
     def initialize(self) -> None:
-        """Initialize to a valid position with outgoing edges.
-
-        Maintains the original 50/50 bias toward node 94 ('symmetric staggered standing'),
-        but ensures only nodes with outgoing edges are selected to avoid dead-end resets.
-        """
-        # Get all nodes with outgoing edges (exclude dead-ends)
+        """Initialize to a uniformly random valid position with outgoing edges."""
         valid_nodes = [
             node for node in self.board.graph.nodes()
             if self.board.get_outgoing_edges(node)
         ]
 
         if not valid_nodes:
-            # Fallback if no valid nodes (shouldn't happen with valid graph)
             self.current_node = 94
             return
 
-        # 50% node 94 (symmetric staggered standing), 50% random valid node
-        self.current_node = random.choice([94, random.choice(valid_nodes)])
+        self.current_node = random.choice(valid_nodes)
 
     def update(self, new_node: int):
         self.logger.info(
