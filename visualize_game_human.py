@@ -2,6 +2,7 @@
 """Run a 3D game where one side is controlled via browser move selection."""
 
 import argparse
+import time
 from pathlib import Path
 
 from Game.human_player import make_human_strategy
@@ -46,6 +47,7 @@ def main() -> None:
             winner_index=winner_index,
             win_type=game.win_reason,
         )
+        time.sleep(2)
 
 
 if __name__ == "__main__":
