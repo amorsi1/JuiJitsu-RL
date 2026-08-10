@@ -18,8 +18,6 @@ def make_human_strategy(
 
     def strategy(possible_moves: List[Tuple[int, Dict]]) -> Tuple[int, Dict]:
         assert possible_moves, "empty list of possible_moves passed to choose_move"
-        if len(possible_moves) == 1:
-            return possible_moves[0]
         server.send_legal_moves(
             current_node=game_state.current_node,
             moves=[
@@ -31,6 +29,8 @@ def make_human_strategy(
                 for to_node, edge_data in possible_moves
             ],
         )
+        if len(possible_moves) == 1:
+            return possible_moves[0]
         to_node = selected_nodes.get()
         for move in possible_moves:
             if move[0] == to_node:
