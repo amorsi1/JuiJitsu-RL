@@ -74,7 +74,12 @@ def test_make_human_strategy_auto_selects_sole_move() -> None:
     result = strategy([only_move])
 
     assert result == only_move
-    assert not server.sent_messages, "auto-select should skip send_legal_moves"
+    # The move is forced, but the browser still needs the legal_moves message so the
+    # graph overlay can animate the transition instead of jumping to it.
+    assert server.sent_messages, "forced move should still publish legal moves"
+    assert server.sent_messages[-1]["moves"] == [
+        {"to_node": 11, "transition_id": 101, "description": "sweep"}
+    ]
 
 
 def test_game_play_turn_works_with_human_strategy() -> None:
@@ -97,7 +102,4 @@ def test_game_play_turn_works_with_human_strategy() -> None:
     game.play_turn()
 
     assert game.game_state.current_node == expected_node
-    if len(possible_moves) > 1:
-        assert server.sent_messages, "human strategy should publish legal moves before blocking"
-    else:
-        assert not server.sent_messages, "single-move auto-select should skip send_legal_moves"
+    assert server.sent_messages, "human strategy should publish legal moves every turn"
