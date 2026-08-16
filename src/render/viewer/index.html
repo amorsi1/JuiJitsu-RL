@@ -701,6 +701,7 @@
     const graphOverlay = document.getElementById('graphOverlay');
     let overlayEpoch = 0;
     let lastTransitionToNodeId = null;
+    const AUTO_MOVE_PAN_MS = 200;   // compressed pan for moves that had no human click
 
     function createOverlayState() {
         return {
@@ -722,6 +723,7 @@
             graphSim: null,
             agentSeedIndex: 0,
             moveCommitted: false,
+            clickCommitted: false,
             nodeSel: null,
             linkSel: null,
             labelSel: null,
@@ -1097,6 +1099,7 @@
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
         overlayState.moveCommitted = true;
+        overlayState.clickCommitted = true;
         overlayState.pendingSelectedId = node.id;
 
         for (const link of overlayState.linksByKey.values()) {
@@ -1152,6 +1155,7 @@
             .classed('historical', (d) => d.historical)
             .classed('dimmed', (d) => {
                 if (!moveCommitted) return false;
+                if (d.selectedPath) return false;
                 return !(d.source.id === currentId && d.target.id === pendingId);
             });
 
@@ -1215,6 +1219,7 @@
         removeContinuityArrow();
 
         overlayState.moveCommitted = false;
+        overlayState.clickCommitted = false;
         overlayState.pendingSelectedId = null;
         overlayState.activeMoveIds.clear();
 
@@ -1291,6 +1296,9 @@
     }
 
     function mergeTransitionOverlay(msg) {
+        // Only a human click commits a move ahead of the transition arriving, so this
+        // also stays true for a rapid follow-up transition that lands mid auto-preview.
+        const wasAutoMove = !overlayState.clickCommitted;
         ensureOverlayScene();
         overlayEpoch += 1;
         removeContinuityArrow();
@@ -1339,6 +1347,7 @@
         overlayState.activeMoveIds.clear();
         overlayState.pendingSelectedId = null;
         overlayState.moveCommitted = false;
+        overlayState.clickCommitted = false;
 
         for (const link of overlayState.linksByKey.values()) {
             const isTransitionEdge = (
@@ -1349,15 +1358,40 @@
             link.selectedPath = false;
         }
 
-        renderOverlayData();
         if (overlayState.graphSim) {
             overlayState.graphSim.stop();
         }
-        animateOverlayPanToNode(toNode, 900, () => {
-            pruneOffscreenHistory();
+
+        if (wasAutoMove) {
+            // No click preceded this move (computer turn or forced move), so replay a
+            // compressed version of the click animation: highlight the destination in
+            // orange, dim everything else, then glide over and settle.
+            overlayState.pendingSelectedId = toId;
+            overlayState.moveCommitted = true;
+            const transitionLink = overlayState.linksByKey.get(overlayLinkKey(fromId, toId));
+            if (transitionLink) {
+                transitionLink.selectedPath = true;
+            }
             renderOverlayData();
-            restartOverlaySimulation(0.22);
-        });
+
+            animateOverlayPanToNode(toNode, AUTO_MOVE_PAN_MS, () => {
+                overlayState.pendingSelectedId = null;
+                overlayState.moveCommitted = false;
+                if (transitionLink) {
+                    transitionLink.selectedPath = false;
+                }
+                pruneOffscreenHistory();
+                renderOverlayData();
+                restartOverlaySimulation(0.22);
+            });
+        } else {
+            renderOverlayData();
+            animateOverlayPanToNode(toNode, 900, () => {
+                pruneOffscreenHistory();
+                renderOverlayData();
+                restartOverlaySimulation(0.22);
+            });
+        }
     }
 
     function initPlayers(posData) {
