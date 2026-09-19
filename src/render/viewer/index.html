@@ -360,6 +360,7 @@
             agentSeedIndex: 0,
             moveCommitted: false,
             clickCommitted: false,
+            moveSent: false,
             nodeSel: null,
             linkSel: null,
             labelSel: null,
@@ -730,6 +731,18 @@
         requestAnimationFrame(animate);
     }
 
+    // Python blocks on exactly one queue read per legal_moves message, so a second
+    // move_selected in the same turn is not consumed until the *next* turn, desyncing
+    // the rest of the game. moveSent is reset only in renderLegalMovesOverlay, which
+    // brackets exactly one click opportunity (it is the only place nodes become
+    // selectable, and mergeTransitionOverlay clears selectable on all of them).
+    function sendMoveSelected(nodeId) {
+        if (overlayState.moveSent) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        overlayState.moveSent = true;
+        ws.send(JSON.stringify({ type: 'move_selected', to_node: Number(nodeId) }));
+    }
+
     function onOverlayNodeClick(event, node) {
         if (overlayState.moveCommitted || node.current || !node.selectable) return;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -758,9 +771,7 @@
             renderOverlayData();
             drawContinuityArrow(sourceNode, node);
             window.setTimeout(() => {
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'move_selected', to_node: Number(node.id) }));
-                }
+                sendMoveSelected(node.id);
             }, 220);
         });
     }
@@ -856,6 +867,7 @@
 
         overlayState.moveCommitted = false;
         overlayState.clickCommitted = false;
+        overlayState.moveSent = false;
         overlayState.pendingSelectedId = null;
         overlayState.activeMoveIds.clear();
 
