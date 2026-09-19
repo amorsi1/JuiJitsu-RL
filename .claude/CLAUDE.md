@@ -213,6 +213,7 @@ Layout stability features: existing nodes are pinned via `spring_layout(fixed=..
 - outbound `config_options`: config UI payload from `build_config_options()`
 - outbound `config_error`: error from `send_config_error()`
 - outbound `legal_moves`: `{type, current_node, moves:[{to_node, transition_id, description}]}`
+- outbound `transition`: `{type, transition_id, reverse, frames, detailed, from_node, to_node, from_reo, to_reo}` — **asymmetric contract**: `from_node`/`to_node` are direction-corrected (actual origin → actual destination); `reverse`, `from_reo`, `to_reo` stay canonical so the 3D frame player can pair reos with frame iteration order.
 - inbound `game_config`: full config payload from browser start button
 - inbound `move_selected`: `{type: "move_selected", to_node}`
 

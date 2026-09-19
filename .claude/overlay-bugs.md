@@ -227,9 +227,19 @@ the main regression risk and will not be obvious — they desync a turn *later*.
 
 ---
 
-# Bug 2 — Reverse transitions highlight the wrong node
+# Bug 2 — Reverse transitions highlight the wrong node ✅ FIXED (`c451f92`)
 
-## Impact
+**Fix:** `send_transition` now swaps `from_node`/`to_node` when `reverse=True` so the
+wire format is direction-corrected. `reverse`, `from_reo`, `to_reo` stay canonical.
+Both JS consumers (`mergeTransitionOverlay:1306-1307` and `:1999`) are correct
+automatically — no JS changes needed.
+
+The second reader (`:1999`, `lastTransitionToNodeId`) was not in the original report;
+it feeds the reset heuristic and is also corrected by the server-side fix.
+
+---
+
+## Impact (archived)
 
 On a reverse traversal, the graph overlay marks the **origin** as the destination:
 wrong node goes gold/current, the traversed edge is recorded backwards, the viewport

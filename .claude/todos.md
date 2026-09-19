@@ -38,25 +38,19 @@ Pre-existing, not introduced by `f0f1dbc`.
 `animateOverlayPanToNode` an `onCancel`/always-run completion path so superseded pans
 still settle their state.
 
-### 2. Reverse transitions highlight the wrong node
-**`src/render/position_server.py:244-245`; `src/render/viewer/index.html:1306`**
+### ~~2. Reverse transitions highlight the wrong node~~ ✅ FIXED (`c451f92`)
+**`src/render/position_server.py` — `send_transition` now direction-corrects node ids**
 
-`send_transition` emits `from_node`/`to_node` verbatim off the transition record and
-never swaps them when `reverse=True`. The 3D frame player compensates (`:1568`, `:1573`,
-`:1580` all branch on `msg.reverse`), but `mergeTransitionOverlay` does not — it reads
-`msg.from_node`/`msg.to_node` directly at `:1306-1307`.
+`send_transition` now swaps `from_node`/`to_node` when `reverse=True` so the wire
+format means "actual origin → actual destination". `reverse`, `from_reo`, and `to_reo`
+stay canonical so `queueTransitionFrames` can pair reos with its frame iteration order
+independently.
 
-So on a reverse traversal the overlay marks the origin as the destination: wrong node
-goes gold, wrong edge is drawn as traversed, and the pan glides to the node the players
-just left.
-
-Pre-existing, but `f0f1dbc` makes it conspicuous — the new orange preview now
-spotlights the wrong node instead of silently panning to it.
-
-**Fix direction:** swap in `send_transition` when `reverse=True` so the wire format
-means "actual origin → actual destination", then drop the `msg.reverse` branches in
-`queueTransitionFrames`. Cleaner than adding a third place that compensates. Check
-whether anything else consumes `from_node`/`to_node` first.
+> **Note:** The original fix direction in this item said *"then drop the `msg.reverse`
+> branches in `queueTransitionFrames`"*. **That second half was wrong.** The reo
+> composition (`:1568-1570`, `:1589`, `:1599`) is matched to frame iteration direction;
+> dropping those branches breaks 3D figure orientation silently. Do not follow that
+> instruction. The correct fix is node-id swap only — reos and `reverse` stay canonical.
 
 ---
 
