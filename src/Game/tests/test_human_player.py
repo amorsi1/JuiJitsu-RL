@@ -6,14 +6,25 @@ from Game.play_game import Board, Game, GameState
 
 
 class StubPositionServer:
-    def __init__(self) -> None:
+    """Stub server that can answer a legal_moves prompt the way the browser would.
+
+    ``reply_with`` matters for ordering: the strategy discards anything queued before
+    it sends the prompt, so a selection must arrive *in response to* the prompt, not
+    ahead of it. That is also the only ordering the real viewer can produce -- nodes
+    are not clickable until a legal_moves message renders them.
+    """
+
+    def __init__(self, reply_with: int | None = None) -> None:
         self.on_move_selected = None
         self.sent_messages = []
+        self.reply_with = reply_with
 
     def send_legal_moves(self, current_node: int, moves: list[dict]) -> None:
         self.sent_messages.append(
             {"current_node": current_node, "moves": moves}
         )
+        if self.reply_with is not None and self.on_move_selected is not None:
+            self.on_move_selected(self.reply_with)
 
 
 def test_make_human_strategy_returns_selected_legal_move() -> None:
@@ -21,7 +32,7 @@ def test_make_human_strategy_returns_selected_legal_move() -> None:
     graph.add_node(10, outgoing=[])
     game_state = GameState(Board(graph))
     game_state.current_node = 10
-    server = StubPositionServer()
+    server = StubPositionServer(reply_with=12)
 
     strategy = make_human_strategy(server, game_state)
     possible_moves = [
@@ -29,7 +40,6 @@ def test_make_human_strategy_returns_selected_legal_move() -> None:
         (12, {"id": 202, "description": "pass"}),
     ]
 
-    server.on_move_selected(12)
     selected_move = strategy(possible_moves)
 
     assert selected_move == possible_moves[1]
@@ -47,7 +57,7 @@ def test_make_human_strategy_raises_for_illegal_selection() -> None:
     graph.add_node(10, outgoing=[])
     game_state = GameState(Board(graph))
     game_state.current_node = 10
-    server = StubPositionServer()
+    server = StubPositionServer(reply_with=999)
 
     strategy = make_human_strategy(server, game_state)
     # Need 2+ moves so the validation path is reached (single-move is auto-selected)
@@ -56,7 +66,6 @@ def test_make_human_strategy_raises_for_illegal_selection() -> None:
         (12, {"id": 202, "description": "pass"}),
     ]
 
-    server.on_move_selected(999)
     with pytest.raises(ValueError, match="not among legal moves"):
         strategy(possible_moves)
 
@@ -98,7 +107,7 @@ def test_game_play_turn_works_with_human_strategy() -> None:
     assert possible_moves
     expected_node = possible_moves[0][0]
 
-    server.on_move_selected(expected_node)
+    server.reply_with = expected_node
     game.play_turn()
 
     assert game.game_state.current_node == expected_node
