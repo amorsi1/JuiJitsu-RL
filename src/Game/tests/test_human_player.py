@@ -91,6 +91,36 @@ def test_make_human_strategy_auto_selects_sole_move() -> None:
     ]
 
 
+def test_forced_move_click_does_not_desync_the_next_turn() -> None:
+    """A click on a forced move must not be consumed as the next turn's choice.
+
+    Forced moves still publish legal_moves, and the viewer renders that lone node as
+    clickable -- but the forced path returns without reading the queue, so the click
+    is left behind. Without the stale-selection drain, the next turn would consume it
+    and every turn after would be shifted.
+    """
+    graph = nx.DiGraph()
+    graph.add_node(10, outgoing=[])
+    game_state = GameState(Board(graph))
+    game_state.current_node = 10
+    server = StubPositionServer()
+
+    strategy = make_human_strategy(server, game_state)
+
+    # Turn 1: forced move, and the player clicks the lone node anyway.
+    only_move = (11, {"id": 101, "description": "sweep"})
+    server.reply_with = 11
+    assert strategy([only_move]) == only_move
+
+    # Turn 2: the real choice must win over the orphaned click from turn 1.
+    server.reply_with = 13
+    possible_moves = [
+        (11, {"id": 101, "description": "sweep"}),
+        (13, {"id": 303, "description": "mount"}),
+    ]
+    assert strategy(possible_moves) == possible_moves[1]
+
+
 def test_game_play_turn_works_with_human_strategy() -> None:
     game = Game("Human integration smoke")
     game.initialize_game("Human", "Agent")
