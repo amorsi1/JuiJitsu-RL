@@ -6,6 +6,9 @@ work surfaced; not a full-repo audit.
 
 Ordered roughly by severity.
 
+> Items 1 and 2 have a full write-up in [`overlay-bugs.md`](./overlay-bugs.md) —
+> root-cause traces, fix options with tradeoffs, and verification plans.
+
 ---
 
 ## P1 — Bugs
