@@ -231,8 +231,13 @@ def test_move_selected_invokes_callback(server):
 
 # --- send_transition ---
 
-def test_send_transition_delivers_frames(server):
-    """send_transition should deliver a message with frames array."""
+def test_send_transition_reverse_swaps_node_ids(server):
+    """send_transition with reverse=True must emit direction-corrected node ids.
+
+    Fixture transition 10 is canonically 1→2. When the game traversed it in reverse
+    (went 2→1), the payload must report from_node=2, to_node=1. Reos stay canonical —
+    queueTransitionFrames pairs them with frame iteration order driven by `reverse`.
+    """
     async def _test():
         async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
             await asyncio.sleep(0.1)
@@ -242,9 +247,29 @@ def test_send_transition_delivers_frames(server):
             assert data['type'] == 'transition'
             assert data['transition_id'] == 10
             assert data['reverse'] is True
-            assert len(data['frames']) == 2  # 2 keyframes in our test data
+            assert len(data['frames']) == 2  # 2 keyframes in fixture
+            # Direction-corrected: game went canonical to_node → canonical from_node
+            assert data['from_node'] == 2
+            assert data['to_node'] == 1
+            # Reos must NOT be swapped — regression guard for the critical constraint
+            assert data['from_reo']['angle'] == pytest.approx(0.0)
+            assert data['to_reo']['angle'] == pytest.approx(0.25)
+
+    asyncio.run(_test())
+
+
+def test_send_transition_forward_keeps_canonical_nodes(server):
+    """send_transition with reverse=False must emit canonical from/to node ids."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_transition(10, reverse=False)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'transition'
             assert data['from_node'] == 1
             assert data['to_node'] == 2
+            assert data['from_reo']['angle'] == pytest.approx(0.0)
             assert data['to_reo']['angle'] == pytest.approx(0.25)
 
     asyncio.run(_test())
