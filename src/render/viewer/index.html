@@ -1135,6 +1135,10 @@
         const sourceNode = overlayState.currentNodeId
             ? overlayState.nodesById.get(overlayState.currentNodeId)
             : null;
+        // Usually superseded: the transition now arrives within milliseconds and
+        // mergeTransitionOverlay starts its own pan to this same node. This callback
+        // only runs when that reply is slow, so treat it as a fallback, not the
+        // normal path.
         animateOverlayPanToNode(node, 900, () => {
             pruneOffscreenHistory();
             renderOverlayData();
@@ -1376,36 +1380,34 @@
             overlayState.graphSim.stop();
         }
 
-        if (wasAutoMove) {
-            // No click preceded this move (computer turn or forced move), so replay a
-            // compressed version of the click animation: highlight the destination in
-            // orange, dim everything else, then glide over and settle.
-            overlayState.pendingSelectedId = toId;
-            overlayState.moveCommitted = true;
-            const transitionLink = overlayState.linksByKey.get(overlayLinkKey(fromId, toId));
-            if (transitionLink) {
-                transitionLink.selectedPath = true;
-            }
-            renderOverlayData();
-
-            animateOverlayPanToNode(toNode, AUTO_MOVE_PAN_MS, () => {
-                overlayState.pendingSelectedId = null;
-                overlayState.moveCommitted = false;
-                if (transitionLink) {
-                    transitionLink.selectedPath = false;
-                }
-                pruneOffscreenHistory();
-                renderOverlayData();
-                restartOverlaySimulation(0.22);
-            });
-        } else {
-            renderOverlayData();
-            animateOverlayPanToNode(toNode, 900, () => {
-                pruneOffscreenHistory();
-                renderOverlayData();
-                restartOverlaySimulation(0.22);
-            });
+        // Both paths spotlight the destination in orange, dim everything else, glide
+        // over and settle. An auto-move (computer turn or forced move) gets a
+        // compressed pan because no click preceded it; a click gets the full glide.
+        //
+        // The click path used to skip the spotlight, assuming the click's own 1120ms
+        // of selection feedback had already played out. That stopped holding once
+        // move_selected moved to click time: Visualizer3D sends the transition before
+        // its turn_delay sleep, so this handler now runs within milliseconds of the
+        // click and the resets above would otherwise wipe the highlight instantly.
+        const panMs = wasAutoMove ? AUTO_MOVE_PAN_MS : 900;
+        overlayState.pendingSelectedId = toId;
+        overlayState.moveCommitted = true;
+        const transitionLink = overlayState.linksByKey.get(overlayLinkKey(fromId, toId));
+        if (transitionLink) {
+            transitionLink.selectedPath = true;
         }
+        renderOverlayData();
+
+        animateOverlayPanToNode(toNode, panMs, () => {
+            overlayState.pendingSelectedId = null;
+            overlayState.moveCommitted = false;
+            if (transitionLink) {
+                transitionLink.selectedPath = false;
+            }
+            pruneOffscreenHistory();
+            renderOverlayData();
+            restartOverlaySimulation(0.22);
+        });
     }
 
     function initPlayers(posData) {
