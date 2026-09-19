@@ -123,8 +123,22 @@ Key design details:
 
 - `make_human_strategy(server, game_state)`:
   - sends current legal moves via `PositionServer.send_legal_moves(...)`
+  - drains stale queue entries **before** sending the prompt (`_drain_stale_selections`), never after — forced moves return without consuming the queue, so a click on a forced move would otherwise be eaten by the next turn
   - blocks on a queue until the browser sends `move_selected`
   - validates selected node against legal `possible_moves`
+
+  Invariant: **one `move_selected` per `legal_moves` message.** Python does exactly one
+  queue read per human turn, so a duplicate send desyncs every turn after. The browser
+  side enforces this with `overlayState.moveSent`, reset only in
+  `renderLegalMovesOverlay`; the drain above is the server-side net.
+
+  `onOverlayNodeClick` sends `move_selected` **at click time**, not from the pan's
+  `onDone` — `animateOverlayPanToNode`'s staleness guard returns before invoking
+  `onDone`, so a superseded pan (e.g. a window resize) used to cancel the send and
+  deadlock the game. Keep protocol sends out of animation callbacks.
+
+  Test stubs must answer the `legal_moves` prompt (`StubPositionServer.reply_with`)
+  rather than pre-queueing a selection — pre-queued entries are now drained.
 - `make_sb3_strategy(model_path, game)`:
   - loads a `MaskablePPO` checkpoint
   - builds obs from live `Game` state using `build_obs(...)`

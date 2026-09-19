@@ -136,3 +136,43 @@ approval for any of them.
 1. `Add per-turn idempotency guard for move_selected sends`
 2. `Send move_selected on click instead of after the pan animation`
 3. *(if Step 3 runs)* `Hold click selection highlight through the transition pan`
+
+---
+
+# Outcome — implemented
+
+All steps landed, plus the forced-move drain (flagged item 2), which was approved.
+Step 3 ran: the highlight loss was a traced consequence of `turn_delay` sleeping after
+the send, not a guess.
+
+Commits, oldest first:
+
+| Commit | Change |
+|---|---|
+| `2714abd` | `moveSent` guard + `sendMoveSelected()` (no behavior change) |
+| `7e135c7` | send moved to click time — **the fix** |
+| `b99a568` | click path holds the spotlight through merge's pan; branches collapsed |
+| `66a28a5` | test stubs answer the prompt instead of pre-queueing |
+| `3a43eb4` | `_drain_stale_selections` before `send_legal_moves` |
+| `9a845f3` | regression test for the forced-move desync |
+
+Suite: 295 passed. The new test fails without the drain (returns node 11, the orphaned
+forced-move click, instead of 13), so it guards the real invariant.
+
+## Still outstanding
+
+**Browser verification has not been done** — it needs a human at a real window. Run
+`uv run python visualize_game_human.py --human-side p1` and walk the five checks under
+Step 2, watching the devtools WS frame inspector for `move_selected` counts. Check 1
+(click, then resize mid-pan) is the bug itself.
+
+**`selected_nodes.get()` still has no timeout** (`human_player.py`). Deliberately left
+alone — flagged item 1, never approved. A closed tab or dropped frame still hangs the
+game with no diagnostic.
+
+**Pre-existing flaky test**, unrelated to this work: measured
+`test_game_play_turn_works_with_human_strategy` at 1 failure / 40 runs before these
+changes and 0 / 40 after. `Game.initialize_game` picks a random start node and
+`ensure_playable_state()` re-initialises to another random node on a dead end, so the
+asserted `current_node` occasionally is not the selected one. Needs a seed or a fixed
+graph fixture.
