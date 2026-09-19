@@ -1114,6 +1114,11 @@
         overlayState.moveCommitted = true;
         overlayState.clickCommitted = true;
         overlayState.pendingSelectedId = node.id;
+        // Send before any animation. Sending from the pan's onDone meant a superseded
+        // pan (e.g. a window resize bumping panAnimId) dropped the message entirely,
+        // leaving Python blocked forever on selected_nodes.get(). The pan below is now
+        // purely visual and cannot affect the protocol.
+        sendMoveSelected(node.id);
 
         for (const link of overlayState.linksByKey.values()) {
             link.selectedPath = (
@@ -1134,9 +1139,6 @@
             pruneOffscreenHistory();
             renderOverlayData();
             drawContinuityArrow(sourceNode, node);
-            window.setTimeout(() => {
-                sendMoveSelected(node.id);
-            }, 220);
         });
     }
 
