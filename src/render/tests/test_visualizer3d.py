@@ -3,9 +3,10 @@ Tests for the Visualizer3D wrapper class.
 These tests verify server lifecycle, update routing, and browser launch behavior.
 """
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 from render.visualizer3d import Visualizer3D
+from render.position_server import PositionServer
 
 # Use a unique port range to avoid conflicts with other test modules
 BASE_PORT = 9200
@@ -43,9 +44,11 @@ def test_visualizer_does_not_open_browser_when_disabled():
 
 def test_visualizer_opens_browser_when_enabled():
     """open_browser=True should call webbrowser.open with the viewer path."""
-    with patch('render.visualizer3d.webbrowser.open') as mock_open:
+    with patch('render.visualizer3d.webbrowser.open') as mock_open, \
+         patch.object(PositionServer, 'wait_for_connection', return_value=False) as mock_wait:
         viz = Visualizer3D(port=BASE_PORT + 2, open_browser=True)
         mock_open.assert_called_once()
+        mock_wait.assert_called_once_with(timeout=15.0)
         call_arg = mock_open.call_args[0][0]
         assert 'viewer/index.html' in call_arg
         assert call_arg.startswith('file://')
@@ -59,7 +62,7 @@ def test_update_position_only(visualizer):
     with patch.object(visualizer.server, 'send_position') as mock_pos, \
          patch.object(visualizer.server, 'send_transition') as mock_trans:
         visualizer.update(94)
-        mock_pos.assert_called_once_with(94, turn=None)
+        mock_pos.assert_called_once_with(94, turn=None, hud=None)
         mock_trans.assert_not_called()
         assert visualizer._last_node_id == 94
 
@@ -70,7 +73,7 @@ def test_update_with_transition(visualizer):
          patch.object(visualizer.server, 'send_position') as mock_pos:
         visualizer._last_node_id = 0
         visualizer.update(259, transition_id=0)
-        mock_trans.assert_called_once_with(0, reverse=False, turn=None)
+        mock_trans.assert_called_once_with(0, reverse=False, turn=None, hud=None)
         mock_pos.assert_not_called()
 
 
@@ -79,7 +82,7 @@ def test_update_with_reverse_transition(visualizer):
     with patch.object(visualizer.server, 'send_transition') as mock_trans:
         visualizer._last_node_id = 259
         visualizer.update(0, transition_id=0)
-        mock_trans.assert_called_once_with(0, reverse=True, turn=None)
+        mock_trans.assert_called_once_with(0, reverse=True, turn=None, hud=None)
 
 
 def test_update_no_crash_on_missing_node(visualizer):
@@ -96,7 +99,17 @@ def test_update_sends_turn_with_position(visualizer):
     """active_turn should be passed through to send_position, not broadcast separately."""
     with patch.object(visualizer.server, 'send_position') as mock_pos:
         visualizer.update(94, active_turn='red')
-        mock_pos.assert_called_once_with(94, turn='red')
+        mock_pos.assert_called_once_with(94, turn='red', hud=None)
+
+
+def test_update_applies_turn_delay():
+    viz = Visualizer3D(port=BASE_PORT + 3, open_browser=False, turn_delay=0.25)
+    try:
+        with patch('render.visualizer3d.time.sleep') as mock_sleep:
+            viz.update(94)
+            mock_sleep.assert_called_once_with(0.25)
+    finally:
+        viz.close()
 
 
 def test_set_turn_forwards_to_server(visualizer):

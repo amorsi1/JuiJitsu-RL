@@ -7,6 +7,172 @@
         html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; }
         #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            z-index: 9;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px 20px 6px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        #hudTurnRow {
+            text-align: center;
+            font-size: 20px;
+            line-height: 1;
+            color: rgb(240, 240, 240);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudPositionName {
+            text-align: center;
+            font-size: 15px;
+            line-height: 1;
+            color: rgb(230, 230, 230);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudScoreRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        #hudP1Score {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Score {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudFlashRow {
+            height: 18px;
+            font-size: 15px;
+            line-height: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #hudP1Flash {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Flash {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudAnnouncement {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            display: flex;
+            transition: opacity 200ms ease;
+        }
+        #hudAnnouncement.hidden {
+            opacity: 0;
+        }
+        #hudAnnouncement.visible {
+            opacity: 1;
+        }
+        #hudAnnouncement.placement-center {
+            align-items: center;
+            justify-content: center;
+        }
+        #hudAnnouncement.placement-upper_third {
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 33vh;
+            box-sizing: border-box;
+        }
+        .ann-panel {
+            padding: 14px 22px;
+            border-radius: 10px;
+        }
+        .panel-celebration {
+            background: rgba(245, 196, 66, 0.95);
+            border: 2px solid rgb(214, 118, 32);
+            box-shadow: 0 8px 24px rgba(40, 24, 8, 0.5);
+        }
+        .panel-text_only {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+        }
+        .ann-text {
+            font-family: monospace;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.1;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
         #graphOverlay {
             position: fixed;
             inset: 0;
@@ -81,8 +247,8 @@
         }
         #turnControl {
             position: fixed;
-            top: 10px;
-            right: 10px;
+            top: calc(100px + 8px);
+            right: 20px;
             z-index: 10;
             display: flex;
             flex-direction: column;
@@ -132,12 +298,208 @@
             transform: translateY(-1px);
             box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
         }
+        /* --- Config overlay --- */
+        #configOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            background: rgba(10, 12, 26, 0.92);
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            color: #e8e8e8;
+        }
+        #configOverlay.visible {
+            display: flex;
+        }
+        #configInner {
+            display: flex;
+            flex-direction: row;
+            gap: 32px;
+            background: rgba(24, 28, 52, 0.98);
+            border: 1px solid rgba(120, 140, 200, 0.3);
+            border-radius: 12px;
+            padding: 32px 36px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+            min-width: 640px;
+            align-items: flex-start;
+        }
+        .cfgPlayerPanel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 170px;
+        }
+        .cfgPlayerTitle {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        #configP1 .cfgPlayerTitle { color: rgb(220, 60, 60); }
+        #configP2 .cfgPlayerTitle { color: rgb(60, 100, 220); }
+        .cfgRadioGroup {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .cfgRadioGroup label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .cfgPolicySelect {
+            margin-top: 6px;
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-family: monospace;
+            font-size: 13px;
+            width: 100%;
+        }
+        .cfgPolicySelect:disabled { opacity: 0.35; }
+        #cfgCenter {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 200px;
+            align-items: center;
+        }
+        #cfgTitle {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            margin-bottom: 4px;
+        }
+        .cfgSettingRow {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 100%;
+        }
+        .cfgSettingRow label {
+            font-size: 12px;
+            color: rgba(200, 200, 220, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .cfgSettingInput {
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-family: monospace;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #cfgError {
+            color: rgb(255, 100, 80);
+            font-size: 13px;
+            min-height: 18px;
+            text-align: center;
+        }
+        #cfgStart {
+            margin-top: 8px;
+            padding: 12px 32px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+        }
+        #cfgStart:hover:not(:disabled) { filter: brightness(1.12); }
+        #cfgStart:disabled { filter: saturate(0.4) brightness(0.7); cursor: default; }
+        /* --- Play Again overlay --- */
+        #playAgainOverlay {
+            display: none;
+            position: fixed;
+            bottom: 60px;
+            left: 0;
+            right: 0;
+            z-index: 22;
+            align-items: center;
+            justify-content: center;
+        }
+        #playAgainOverlay.visible {
+            display: flex;
+        }
+        #playAgainBtn {
+            padding: 14px 44px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        #playAgainBtn:hover { filter: brightness(1.15); }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
+    <div id="hud">
+      <div id="hudTurnRow">Turn <span id="hudTurnNumber">-</span></div>
+      <div id="hudPositionName">-</div>
+      <div id="hudScoreRow">
+        <span id="hudP1Score">P1: 0</span>
+        <span id="hudP2Score">P2: 0</span>
+      </div>
+      <div id="hudFlashRow">
+        <span id="hudP1Flash"></span>
+        <span id="hudP2Flash"></span>
+      </div>
+    </div>
+    <div id="hudAnnouncement" class="hidden"></div>
+    <div id="configOverlay">
+        <div id="configInner">
+            <div id="configP1" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 1</div>
+                <div class="cfgRadioGroup" id="cfgP1Radios"></div>
+                <select id="cfgP1Policy" class="cfgPolicySelect"></select>
+            </div>
+            <div id="cfgCenter">
+                <div id="cfgTitle">Configure Match</div>
+                <div class="cfgSettingRow">
+                    <label for="cfgMaxTurns">Max Turns</label>
+                    <input id="cfgMaxTurns" type="number" class="cfgSettingInput" value="30" min="1" max="500">
+                </div>
+                <div class="cfgSettingRow">
+                    <label for="cfgTurnDelay">Turn Delay (s)</label>
+                    <input id="cfgTurnDelay" type="number" class="cfgSettingInput" value="0.0" min="0" max="5" step="0.1">
+                </div>
+                <div id="cfgError"></div>
+                <button id="cfgStart">Start</button>
+            </div>
+            <div id="configP2" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 2</div>
+                <div class="cfgRadioGroup" id="cfgP2Radios"></div>
+                <select id="cfgP2Policy" class="cfgPolicySelect"></select>
+            </div>
+        </div>
+    </div>
+    <div id="playAgainOverlay">
+        <button id="playAgainBtn">Play Again</button>
+    </div>
     <svg id="graphOverlay"></svg>
     <div id="status">Connecting...</div>
     <div id="turnControl">
@@ -334,6 +696,8 @@
     let lastKeyframe = null;     // last settled keyframe in world space
     const queuedFrames = [];     // transformed keyframes waiting to be played
     let animK = 0;               // interpolation factor [0,1) to the next queued keyframe
+    const pendingGameEndEvents = []; // announcement/game_over msgs waiting for animation to finish
+    let gameEndFlushTimer = null;    // spaces game_over after an announcement's hold time
     const graphOverlay = document.getElementById('graphOverlay');
     let overlayEpoch = 0;
     let lastTransitionToNodeId = null;
@@ -880,7 +1244,7 @@
         const currentNodeId = String(msg.current_node);
         const centerGraph = graphCenterInGraphSpace();
         const currentNode = ensureOverlayNode(currentNodeId, {
-            label: 'Current',
+            label: truncateLabel(currentPositionName) || `Node ${currentNodeId}`,
             x: centerGraph.x,
             y: centerGraph.y,
             transition_id: null
@@ -895,7 +1259,7 @@
         currentNode.current = true;
         currentNode.selectable = false;
         currentNode.historical = false;
-        currentNode.label = 'Current';
+        currentNode.label = truncateLabel(currentPositionName) || `Node ${currentNodeId}`;
         currentNode.transition_id = null;
         overlayState.currentNodeId = currentNodeId;
 
@@ -995,7 +1359,7 @@
         toNode.current = true;
         toNode.selectable = false;
         toNode.historical = false;
-        toNode.label = 'Current';
+        toNode.label = truncateLabel(currentPositionName) || `Node ${toId}`;
         overlayState.currentNodeId = toId;
 
         overlayState.activeMoveIds.clear();
@@ -1234,7 +1598,8 @@
                 const isLast = (i === 1);
                 queuedFrames.push({
                     pos: applyReo(startReo, frames[i - 1]),
-                    turn: isLast ? (msg.turn || null) : null
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
                 });
             }
             currentReo = composeReo(msg.from_reo, startReo);
@@ -1243,7 +1608,8 @@
                 const isLast = (i === frames.length - 1);
                 queuedFrames.push({
                     pos: applyReo(startReo, frames[i]),
-                    turn: isLast ? (msg.turn || null) : null
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
                 });
             }
             currentReo = composeReo(msg.to_reo, startReo);
@@ -1283,6 +1649,7 @@
                 const entry = queuedFrames.shift();
                 lastKeyframe = entry.pos;
                 if (entry.turn) setActiveTurn(entry.turn);
+                if (entry.hud) applyHudState(entry.hud);
             }
 
             if (queuedFrames.length > 0) {
@@ -1290,6 +1657,7 @@
             } else {
                 currentPos = lastKeyframe;
                 animK = 0;
+                flushGameEndEvents();
             }
         }
 
@@ -1313,8 +1681,21 @@
 
     // === WebSocket client ===
     const statusEl = document.getElementById('status');
+    const hudTurnNumber = document.getElementById('hudTurnNumber');
+    const hudPositionName = document.getElementById('hudPositionName');
+    const hudP1Score = document.getElementById('hudP1Score');
+    const hudP2Score = document.getElementById('hudP2Score');
+    const hudP1Flash = document.getElementById('hudP1Flash');
+    const hudP2Flash = document.getElementById('hudP2Flash');
+    const hudAnnouncement = document.getElementById('hudAnnouncement');
     const blueTurnButton = document.getElementById('blueTurnButton');
     const redTurnButton = document.getElementById('redTurnButton');
+    let prevHudState = null;
+    let currentPositionName = null;
+    let p1FlashTimer = null;
+    let p2FlashTimer = null;
+    let announcementTimer = null;
+    let lastGameConfig = null;
     let ws;
     let reconnectTimer;
 
@@ -1332,8 +1713,232 @@
         }
     }
 
+    function showFlash(el, text, setTimer, existingTimer) {
+        if (existingTimer) clearTimeout(existingTimer);
+        el.textContent = text;
+        setTimer(setTimeout(() => {
+            el.textContent = '';
+        }, 2000));
+    }
+
+    function applyHudState(msg) {
+        hudTurnNumber.textContent = msg.turn_number;
+        hudPositionName.textContent = msg.position_name;
+        currentPositionName = msg.position_name;
+        if (overlayState.initialized && overlayState.currentNodeId) {
+            const currentNode = overlayState.nodesById.get(overlayState.currentNodeId);
+            if (currentNode) {
+                currentNode.label = truncateLabel(currentPositionName);
+                renderOverlayData();
+            }
+        }
+        const prevP1 = prevHudState?.p1_points ?? null;
+        const prevP2 = prevHudState?.p2_points ?? null;
+        hudP1Score.textContent = 'P1: ' + msg.p1_points;
+        hudP2Score.textContent = 'P2: ' + msg.p2_points;
+        if (prevP1 !== null && msg.p1_points > prevP1) {
+            showFlash(
+                hudP1Flash,
+                '+' + (msg.p1_points - prevP1) + ' pts',
+                (t) => p1FlashTimer = t,
+                p1FlashTimer
+            );
+        }
+        if (prevP2 !== null && msg.p2_points > prevP2) {
+            showFlash(
+                hudP2Flash,
+                '+' + (msg.p2_points - prevP2) + ' pts',
+                (t) => p2FlashTimer = t,
+                p2FlashTimer
+            );
+        }
+        prevHudState = msg;
+    }
+
+    function applyAnnouncement(msg) {
+        if (announcementTimer) {
+            clearTimeout(announcementTimer);
+            announcementTimer = null;
+        }
+        hudAnnouncement.innerHTML = '';
+        hudAnnouncement.className = 'visible placement-' + msg.placement;
+        const panel = document.createElement('div');
+        panel.className = 'ann-panel panel-' + msg.panel_style;
+        const textEl = document.createElement('div');
+        textEl.className = 'ann-text';
+        textEl.style.color = `rgb(${msg.text_color[0]},${msg.text_color[1]},${msg.text_color[2]})`;
+        textEl.textContent = msg.text;
+        panel.appendChild(textEl);
+        hudAnnouncement.appendChild(panel);
+        announcementTimer = setTimeout(() => {
+            hudAnnouncement.classList.replace('visible', 'hidden');
+            announcementTimer = null;
+        }, msg.hold_seconds * 1000);
+    }
+
+    function flushGameEndEvents() {
+        while (pendingGameEndEvents.length > 0 && queuedFrames.length === 0 && !gameEndFlushTimer) {
+            const msg = pendingGameEndEvents.shift();
+            if (msg.type === 'announcement') {
+                applyAnnouncement(msg);
+                // hold remaining events (game_over) until the banner has displayed
+                gameEndFlushTimer = setTimeout(() => {
+                    gameEndFlushTimer = null;
+                    flushGameEndEvents();
+                }, msg.hold_seconds * 1000);
+            } else if (msg.type === 'game_over') {
+                playAgainOverlay.classList.add('visible');
+            }
+        }
+    }
+
+    const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+
+    // --- Play Again overlay ---
+    const playAgainOverlay = document.getElementById('playAgainOverlay');
+    document.getElementById('playAgainBtn').addEventListener('click', () => {
+        playAgainOverlay.classList.remove('visible');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'play_again' }));
+        }
+    });
+
+    // --- Config overlay ---
+    const configOverlay = document.getElementById('configOverlay');
+    const cfgMaxTurns = document.getElementById('cfgMaxTurns');
+    const cfgTurnDelay = document.getElementById('cfgTurnDelay');
+    const cfgError = document.getElementById('cfgError');
+    const cfgStart = document.getElementById('cfgStart');
+
+    function _buildPlayerPanel(radiosEl, policyEl, playerKey, policies) {
+        radiosEl.innerHTML = '';
+        // Human radio
+        const humanLabel = document.createElement('label');
+        const humanRadio = document.createElement('input');
+        humanRadio.type = 'radio';
+        humanRadio.name = `cfg-${playerKey}-type`;
+        humanRadio.value = 'human';
+        humanLabel.appendChild(humanRadio);
+        humanLabel.appendChild(document.createTextNode('Human'));
+        radiosEl.appendChild(humanLabel);
+        // Computer radio
+        const compLabel = document.createElement('label');
+        const compRadio = document.createElement('input');
+        compRadio.type = 'radio';
+        compRadio.name = `cfg-${playerKey}-type`;
+        compRadio.value = 'computer';
+        compRadio.checked = true;
+        compLabel.appendChild(compRadio);
+        compLabel.appendChild(document.createTextNode('Computer'));
+        radiosEl.appendChild(compLabel);
+
+        // Policy select — only computer policies
+        policyEl.innerHTML = '';
+        policies.filter(p => p.kind === 'computer').forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.label;
+            policyEl.appendChild(opt);
+        });
+
+        // Toggle select disabled state based on radio
+        function updateSelectState() {
+            policyEl.disabled = humanRadio.checked;
+        }
+        humanRadio.addEventListener('change', updateSelectState);
+        compRadio.addEventListener('change', updateSelectState);
+        updateSelectState();
+    }
+
+    function _applyPlayerConfig(playerKey, playerCfg) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        for (const r of radios) {
+            if (r.value === playerCfg.type) {
+                r.checked = true;
+                r.dispatchEvent(new Event('change'));
+                break;
+            }
+        }
+        if (playerCfg.type === 'computer' && playerCfg.policy_id) {
+            const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+            policyEl.value = playerCfg.policy_id;
+        }
+    }
+
+    function renderConfigOverlay(msg) {
+        const policies = msg.policies || [];
+        const settings = msg.settings || {};
+        // Apply settings defaults/min/max
+        if (settings.max_turns) {
+            cfgMaxTurns.value = settings.max_turns.default ?? 30;
+            cfgMaxTurns.min = settings.max_turns.min ?? 1;
+            cfgMaxTurns.max = settings.max_turns.max ?? 500;
+        }
+        if (settings.turn_delay) {
+            cfgTurnDelay.value = settings.turn_delay.default ?? 0.0;
+        }
+        // Build player panels
+        _buildPlayerPanel(
+            document.getElementById('cfgP1Radios'),
+            document.getElementById('cfgP1Policy'),
+            'p1', policies
+        );
+        _buildPlayerPanel(
+            document.getElementById('cfgP2Radios'),
+            document.getElementById('cfgP2Policy'),
+            'p2', policies
+        );
+        // Restore previous game settings if available (overrides server defaults)
+        if (lastGameConfig) {
+            cfgMaxTurns.value = lastGameConfig.settings.max_turns;
+            cfgTurnDelay.value = lastGameConfig.settings.turn_delay;
+            _applyPlayerConfig('p1', lastGameConfig.players.p1);
+            _applyPlayerConfig('p2', lastGameConfig.players.p2);
+        }
+        cfgError.textContent = '';
+        cfgStart.disabled = false;
+        cfgStart.textContent = 'Start';
+        configOverlay.classList.add('visible');
+    }
+
+    function hideConfigOverlay() {
+        configOverlay.classList.remove('visible');
+    }
+
+    function _getPlayerConfig(playerKey) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        let type = 'computer';
+        for (const r of radios) {
+            if (r.checked) { type = r.value; break; }
+        }
+        if (type === 'human') return { type: 'human' };
+        const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+        return { type: 'computer', policy_id: policyEl.value };
+    }
+
+    cfgStart.addEventListener('click', () => {
+        cfgStart.disabled = true;
+        cfgStart.textContent = 'Starting…';
+        cfgError.textContent = '';
+        const payload = {
+            type: 'game_config',
+            settings: {
+                max_turns: parseInt(cfgMaxTurns.value, 10),
+                turn_delay: parseFloat(cfgTurnDelay.value),
+            },
+            players: {
+                p1: _getPlayerConfig('p1'),
+                p2: _getPlayerConfig('p2'),
+            },
+        };
+        lastGameConfig = { settings: payload.settings, players: payload.players };
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
+    });
+
     function connect() {
-        ws = new WebSocket('ws://localhost:8765');
+        ws = new WebSocket(`ws://localhost:${wsPort}`);
 
         ws.onopen = () => {
             statusEl.textContent = 'Connected';
@@ -1344,6 +1949,31 @@
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             statusEl.style.opacity = '1';
+            if (msg.type === 'game_over') {
+                pendingGameEndEvents.push(msg);
+                flushGameEndEvents();
+                return;
+            }
+            if (msg.type === 'config_options') {
+                playAgainOverlay.classList.remove('visible');
+                renderConfigOverlay(msg);
+                return;
+            }
+            if (msg.type === 'config_error') {
+                cfgError.textContent = msg.message;
+                cfgStart.disabled = false;
+                cfgStart.textContent = 'Start';
+                return;
+            }
+            if (msg.type === 'hud_state') {
+                applyHudState(msg);
+                return;
+            }
+            if (msg.type === 'announcement') {
+                pendingGameEndEvents.push(msg);
+                flushGameEndEvents();
+                return;
+            }
             if (msg.type === 'turn_state') {
                 if (msg.turn) {
                     setActiveTurn(msg.turn);
@@ -1358,6 +1988,8 @@
             }
 
             if (msg.type === 'position') {
+                hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
                 const nodeId = String(msg.node_id);
                 const matchesCurrent = overlayState.currentNodeId === nodeId;
                 const matchesLastTransition = lastTransitionToNodeId === nodeId;
@@ -1369,12 +2001,16 @@
                 if (!playerUpdaters) initPlayers(posData);
                 currentReo = zeroReo();
                 queuedFrames.length = 0;
+                pendingGameEndEvents.length = 0;
                 animK = 0;
                 currentPos = posData;
                 lastKeyframe = posData;
                 statusEl.textContent = 'Position: node ' + msg.node_id;
                 if (msg.turn) setActiveTurn(msg.turn);
+                if (msg.hud) applyHudState(msg.hud);
             } else if (msg.type === 'transition') {
+                hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
                 mergeTransitionOverlay(msg);
                 lastTransitionToNodeId = String(msg.to_node);
                 if (!currentReo) {

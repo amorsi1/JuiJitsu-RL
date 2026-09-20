@@ -2,6 +2,7 @@
 """Run a 3D game where one side is controlled via browser move selection."""
 
 import argparse
+import time
 from pathlib import Path
 
 from Game.human_player import make_human_strategy
@@ -28,6 +29,7 @@ def main() -> None:
 
     game = Game("Human vs Agent", max_turns=args.max_turns, visualize_3d=True, logger=logger)
     game.initialize_game("Human", "Agent")
+    game.visualizer.game_ref = game
 
     human_player = game.player1 if args.human_side == "p1" else game.player2
     agent_player = game.player2 if human_player is game.player1 else game.player1
@@ -37,6 +39,15 @@ def main() -> None:
         agent_player.strategy = make_sb3_strategy(args.model_path, game)
 
     game.play_game()
+
+    if game.winner is not None:
+        winner_index = 0 if game.winner is game.player1 else 1
+        game.visualizer.server.send_announcement(
+            kind="win",
+            winner_index=winner_index,
+            win_type=game.win_reason,
+        )
+        time.sleep(2)
 
 
 if __name__ == "__main__":
