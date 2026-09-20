@@ -101,18 +101,29 @@ class PositionServer:
         self.send_turn_state()
 
     def send_transition(self, transition_id: int, reverse: bool = False, turn: Optional[str] = None):
-        """Send transition frame sequence for animation."""
+        """Send transition frame sequence for animation.
+
+        Wire contract: from_node/to_node are direction-corrected — they reflect the
+        actual traversal direction, not the canonical record order. On a reverse
+        traversal the game went canonical to_node → canonical from_node, so the fields
+        are swapped. `reverse`, `from_reo`, and `to_reo` stay canonical; the 3D frame
+        player (queueTransitionFrames) pairs reos with its frame iteration order, which
+        is driven by `reverse` independently of the node fields.
+        """
         if transition_id not in self.transition_frames:
             return
         data = self.transition_frames[transition_id]
+        from_node, to_node = data['from_node'], data['to_node']
+        if reverse:
+            from_node, to_node = to_node, from_node
         payload: dict = {
             'type': 'transition',
             'transition_id': transition_id,
             'reverse': reverse,
             'frames': data['frames'],
             'detailed': data['detailed'],
-            'from_node': data['from_node'],
-            'to_node': data['to_node'],
+            'from_node': from_node,
+            'to_node': to_node,
             'from_reo': data['from_reo'],
             'to_reo': data['to_reo'],
         }
