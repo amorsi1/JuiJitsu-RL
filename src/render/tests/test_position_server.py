@@ -1,0 +1,455 @@
+import asyncio
+import json
+import time
+from queue import Queue
+import pytest
+import websockets
+from render.position_server import PositionServer
+
+NUM_JOINTS = 23
+NUM_PLAYERS = 2
+
+# Use a unique port per test module to avoid conflicts
+BASE_PORT = 9100
+
+
+@pytest.fixture
+def server(tmp_path):
+    """Create a PositionServer with minimal synthetic data, start it, yield, then stop."""
+    srv = PositionServer(host='localhost', port=BASE_PORT)
+
+    # Inject synthetic data directly instead of loading from files
+    srv.positions = {
+        1: [[[0.1 * j, 0.0, 0.0] for j in range(NUM_JOINTS)] for _ in range(NUM_PLAYERS)],
+        2: [[[0.0, 0.1 * j, 0.0] for j in range(NUM_JOINTS)] for _ in range(NUM_PLAYERS)],
+    }
+    srv.transition_frames = {
+        10: {
+            'frames': [
+                [[[0.0, 0.0, 0.0] for _ in range(NUM_JOINTS)] for _ in range(NUM_PLAYERS)],
+                [[[1.0, 1.0, 1.0] for _ in range(NUM_JOINTS)] for _ in range(NUM_PLAYERS)],
+            ],
+            'detailed': False,
+            'from_node': 1,
+            'to_node': 2,
+            'from_reo': {'mirror': False, 'swap_players': False, 'angle': 0.0, 'offset': [0.0, 0.0, 0.0]},
+            'to_reo': {'mirror': False, 'swap_players': False, 'angle': 0.25, 'offset': [0.1, 0.0, -0.2]},
+        },
+    }
+    srv.start()
+    time.sleep(0.3)
+    yield srv
+    srv.stop()
+
+
+@pytest.fixture
+def server_real_data():
+    """Create a PositionServer loaded with the real GrappleMap data."""
+    srv = PositionServer(host='localhost', port=BASE_PORT + 1)
+    srv.load_data()
+    srv.start()
+    time.sleep(0.3)
+    yield srv
+    srv.stop()
+
+
+async def _connect_and_receive(port, timeout=2.0):
+    """Connect as a WebSocket client and return the first message received."""
+    async with websockets.connect(f'ws://localhost:{port}') as ws:
+        msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        return json.loads(msg)
+
+
+# --- Server lifecycle ---
+
+def test_server_starts_and_stops(server):
+    """Server should start without error and have a running event loop."""
+    assert server._loop is not None
+    assert server._thread is not None
+    assert server._thread.is_alive()
+
+
+def test_server_stops_cleanly(tmp_path):
+    srv = PositionServer(host='localhost', port=BASE_PORT + 2)
+    srv.positions = {1: [[[0.0, 0.0, 0.0]] * NUM_JOINTS] * NUM_PLAYERS}
+    srv.transition_frames = {}
+    srv.start()
+    time.sleep(0.3)
+    srv.stop()
+    time.sleep(0.3)
+    assert not srv._thread.is_alive()
+
+
+# --- Client connection ---
+
+def test_client_can_connect(server):
+    """A WebSocket client should be able to connect to the server."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            if hasattr(ws, "open"):
+                assert ws.open
+            else:
+                assert ws.state.name == "OPEN"
+
+    asyncio.run(_test())
+
+
+def test_client_tracked_on_connect(server):
+    """The server should track connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            assert len(server._clients) == 1
+
+    asyncio.run(_test())
+
+
+def test_client_removed_on_disconnect(server):
+    """After client disconnects, it should be removed from the set."""
+    async def _test():
+        ws = await websockets.connect(f'ws://localhost:{BASE_PORT}')
+        await asyncio.sleep(0.1)
+        assert len(server._clients) == 1
+        await ws.close()
+        await asyncio.sleep(0.2)
+        assert len(server._clients) == 0
+
+    asyncio.run(_test())
+
+
+def test_wait_for_connection_times_out_without_clients(server):
+    assert server.wait_for_connection(timeout=0.05) is False
+
+
+def test_wait_for_connection_returns_true_after_connect(server):
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}'):
+            await asyncio.sleep(0.1)
+            assert server.wait_for_connection(timeout=0.2) is True
+
+    asyncio.run(_test())
+
+
+# --- send_position ---
+
+def test_send_position_delivers_message(server):
+    """send_position should deliver a JSON message with the correct structure."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_position(1)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'position'
+            assert data['node_id'] == 1
+            assert len(data['data']) == NUM_PLAYERS
+            assert len(data['data'][0]) == NUM_JOINTS
+
+    asyncio.run(_test())
+
+
+def test_send_position_unknown_node_is_silent(server):
+    """send_position with a non-existent node_id should not crash or send anything."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_position(9999)  # doesn't exist
+            # Should not receive anything — use a short timeout
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=0.5)
+
+    asyncio.run(_test())
+
+
+def test_send_position_no_clients_no_crash(server):
+    """send_position with no connected clients should not raise."""
+    server.send_position(1)  # no exception
+
+
+# --- turn state ---
+
+def test_get_turn_returns_current_turn(server):
+    """Clients can request the current turn via the WebSocket API."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.set_turn('blue')
+            await ws.send(json.dumps({'type': 'get_turn'}))
+            data = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert data['type'] == 'turn_state'
+            assert data['turn'] == 'blue'
+
+    asyncio.run(_test())
+
+
+def test_set_turn_broadcasts_to_connected_clients(server):
+    """set_turn should push the updated turn state to connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.set_turn('red')
+            data = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert data['type'] == 'turn_state'
+            assert data['turn'] == 'red'
+
+    asyncio.run(_test())
+
+
+def test_set_turn_rejects_invalid_value(server):
+    with pytest.raises(ValueError):
+        server.set_turn('green')
+
+
+def test_send_legal_moves_delivers_message(server):
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_legal_moves(
+                current_node=1,
+                moves=[{'to_node': 2, 'transition_id': 10, 'description': 'pass'}],
+            )
+            data = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert data['type'] == 'legal_moves'
+            assert data['current_node'] == 1
+            assert data['moves'] == [{'to_node': 2, 'transition_id': 10, 'description': 'pass'}]
+
+    asyncio.run(_test())
+
+
+def test_move_selected_invokes_callback(server):
+    async def _test():
+        selected = Queue()
+        server.on_move_selected = selected.put
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps({'type': 'move_selected', 'to_node': 2}))
+            await asyncio.sleep(0.1)
+        assert selected.get(timeout=1.0) == 2
+
+    asyncio.run(_test())
+
+
+# --- send_transition ---
+
+def test_send_transition_reverse_swaps_node_ids(server):
+    """send_transition with reverse=True must emit direction-corrected node ids.
+
+    Fixture transition 10 is canonically 1→2. When the game traversed it in reverse
+    (went 2→1), the payload must report from_node=2, to_node=1. Reos stay canonical —
+    queueTransitionFrames pairs them with frame iteration order driven by `reverse`.
+    """
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_transition(10, reverse=True)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'transition'
+            assert data['transition_id'] == 10
+            assert data['reverse'] is True
+            assert len(data['frames']) == 2  # 2 keyframes in fixture
+            # Direction-corrected: game went canonical to_node → canonical from_node
+            assert data['from_node'] == 2
+            assert data['to_node'] == 1
+            # Reos must NOT be swapped — regression guard for the critical constraint
+            assert data['from_reo']['angle'] == pytest.approx(0.0)
+            assert data['to_reo']['angle'] == pytest.approx(0.25)
+
+    asyncio.run(_test())
+
+
+def test_send_transition_forward_keeps_canonical_nodes(server):
+    """send_transition with reverse=False must emit canonical from/to node ids."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_transition(10, reverse=False)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'transition'
+            assert data['from_node'] == 1
+            assert data['to_node'] == 2
+            assert data['from_reo']['angle'] == pytest.approx(0.0)
+            assert data['to_reo']['angle'] == pytest.approx(0.25)
+
+    asyncio.run(_test())
+
+
+def test_send_transition_unknown_id_is_silent(server):
+    """send_transition with a non-existent ID should not crash or send."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_transition(9999)
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=0.5)
+
+    asyncio.run(_test())
+
+
+# --- Multiple clients ---
+
+def test_broadcast_reaches_all_clients(server):
+    """A position message should be sent to all connected clients."""
+    async def _test():
+        ws1 = await websockets.connect(f'ws://localhost:{BASE_PORT}')
+        ws2 = await websockets.connect(f'ws://localhost:{BASE_PORT}')
+        await asyncio.sleep(0.1)
+        assert len(server._clients) == 2
+
+        server.send_position(2)
+
+        msg1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=2.0))
+        msg2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=2.0))
+
+        assert msg1['node_id'] == 2
+        assert msg2['node_id'] == 2
+
+        await ws1.close()
+        await ws2.close()
+
+    asyncio.run(_test())
+
+
+# --- Real data integration ---
+
+def test_send_position_node94_real_data(server_real_data):
+    """Verify that the real starting position (node 94) sends valid data."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT + 1}') as ws:
+            await asyncio.sleep(0.1)
+            server_real_data.send_position(94)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'position'
+            assert data['node_id'] == 94
+            assert len(data['data']) == NUM_PLAYERS
+            assert len(data['data'][0]) == NUM_JOINTS
+            # Each joint should be [x, y, z]
+            for joint in data['data'][0]:
+                assert len(joint) == 3
+
+    asyncio.run(_test())
+
+
+def test_game_config_invokes_callback(server):
+    """An inbound game_config message should invoke on_game_config with the full payload."""
+    async def _test():
+        received = Queue()
+        server.on_game_config = received.put
+        payload = {
+            'type': 'game_config',
+            'settings': {'max_turns': 20, 'turn_delay': 0.5},
+            'players': {'p1': {'type': 'human'}, 'p2': {'type': 'computer', 'policy_id': 'random'}},
+        }
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps(payload))
+            await asyncio.sleep(0.1)
+        assert received.get(timeout=1.0) == payload
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_before_connect_replayed_on_connect(server):
+    """Options stored before any client connects should be sent immediately on connect."""
+    options = {'settings': {'max_turns': {'default': 30, 'min': 1, 'max': 500}}, 'policies': []}
+    server.set_config_options(options)
+
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_options', **options}
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_while_connected_broadcasts(server):
+    """Calling set_config_options while a client is connected should broadcast the update."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            options = {'settings': {'max_turns': {'default': 15, 'min': 1, 'max': 500}}, 'policies': []}
+            server.set_config_options(options)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_options', **options}
+
+    asyncio.run(_test())
+
+
+def test_set_config_options_none_clears_replay(server):
+    """After clearing config_options with None, newly connecting clients get nothing."""
+    options = {'settings': {'max_turns': {'default': 30, 'min': 1, 'max': 500}}, 'policies': []}
+    server.set_config_options(options)
+    server.set_config_options(None)
+
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=0.5)
+
+    asyncio.run(_test())
+
+
+def test_send_config_error_delivers_message(server):
+    """send_config_error should broadcast a config_error message to connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_config_error('bad policy id')
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'config_error', 'message': 'bad policy id'}
+
+    asyncio.run(_test())
+
+
+def test_send_game_over_delivers_message(server):
+    """send_game_over should broadcast a game_over message to connected clients."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            server.send_game_over()
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data == {'type': 'game_over'}
+
+    asyncio.run(_test())
+
+
+def test_play_again_invokes_callback(server):
+    """An inbound play_again message should invoke on_play_again."""
+    async def _test():
+        called = Queue()
+        server.on_play_again = lambda: called.put(True)
+        async with websockets.connect(f'ws://localhost:{BASE_PORT}') as ws:
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps({'type': 'play_again'}))
+            await asyncio.sleep(0.1)
+        assert called.get(timeout=1.0) is True
+
+    asyncio.run(_test())
+
+
+def test_send_transition_0_real_data(server_real_data):
+    """Verify that real transition 0 sends valid frame data."""
+    async def _test():
+        async with websockets.connect(f'ws://localhost:{BASE_PORT + 1}') as ws:
+            await asyncio.sleep(0.1)
+            server_real_data.send_transition(0)
+            msg = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(msg)
+            assert data['type'] == 'transition'
+            assert data['transition_id'] == 0
+            assert data['reverse'] is False
+            assert len(data['frames']) >= 1
+            assert 'from_reo' in data
+            assert 'to_reo' in data
+            # Check first frame structure
+            frame = data['frames'][0]
+            assert len(frame) == NUM_PLAYERS
+            assert len(frame[0]) == NUM_JOINTS
+
+    asyncio.run(_test())

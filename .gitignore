@@ -1,0 +1,19 @@
+#ignore files that start with a period
+.*
+
+# but keep .env template
+!.env.template
+
+# ignore python cache files
+__pycache__/
+*.pyc
+# Ignore build directories
+build/
+dist/
+
+# let the LLM track its notes
+!.claude/
+
+# Training artifacts
+models/
+logs/

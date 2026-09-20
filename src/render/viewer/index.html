@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>BJJ RL - 3D Viewer</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #1a1a2e; }
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; }
+        #status { position: fixed; top: 10px; left: 10px; color: #ccc; font-family: monospace; font-size: 14px; z-index: 10; }
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            z-index: 9;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px 20px 6px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        #hudTurnRow {
+            text-align: center;
+            font-size: 20px;
+            line-height: 1;
+            color: rgb(240, 240, 240);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudPositionName {
+            text-align: center;
+            font-size: 15px;
+            line-height: 1;
+            color: rgb(230, 230, 230);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudScoreRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        #hudP1Score {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Score {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudFlashRow {
+            height: 18px;
+            font-size: 15px;
+            line-height: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #hudP1Flash {
+            color: rgb(220, 60, 60);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudP2Flash {
+            color: rgb(60, 100, 220);
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #hudAnnouncement {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            display: flex;
+            transition: opacity 200ms ease;
+        }
+        #hudAnnouncement.hidden {
+            opacity: 0;
+        }
+        #hudAnnouncement.visible {
+            opacity: 1;
+        }
+        #hudAnnouncement.placement-center {
+            align-items: center;
+            justify-content: center;
+        }
+        #hudAnnouncement.placement-upper_third {
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 33vh;
+            box-sizing: border-box;
+        }
+        .ann-panel {
+            padding: 14px 22px;
+            border-radius: 10px;
+        }
+        .panel-celebration {
+            background: rgba(245, 196, 66, 0.95);
+            border: 2px solid rgb(214, 118, 32);
+            box-shadow: 0 8px 24px rgba(40, 24, 8, 0.5);
+        }
+        .panel-text_only {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+        }
+        .ann-text {
+            font-family: monospace;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.1;
+            text-shadow:
+                -1px -1px 0 rgb(0, 0, 0),
+                 0 -1px 0 rgb(0, 0, 0),
+                 1px -1px 0 rgb(0, 0, 0),
+                -1px  0   0 rgb(0, 0, 0),
+                 1px  0   0 rgb(0, 0, 0),
+                -1px  1px 0 rgb(0, 0, 0),
+                 0  1px  0 rgb(0, 0, 0),
+                 1px  1px 0 rgb(0, 0, 0);
+        }
+        #graphOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 8;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 180ms ease;
+        }
+        #graphOverlay.visible {
+            opacity: 1;
+        }
+        #graphOverlay .graph-link {
+            stroke: rgba(255, 255, 255, 0.45);
+            stroke-width: 2;
+            marker-end: url(#graphArrow);
+        }
+        #graphOverlay .graph-link.historical {
+            opacity: 0.12;
+        }
+        #graphOverlay .graph-link.dimmed {
+            opacity: 0.16;
+        }
+        #graphOverlay .graph-node {
+            fill: #8ec5ff;
+            stroke: rgba(6, 18, 39, 0.95);
+            stroke-width: 2;
+            opacity: 0.35;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: opacity 140ms ease, transform 140ms ease;
+        }
+        #graphOverlay .graph-node.selectable {
+            opacity: 0.88;
+        }
+        #graphOverlay .graph-node:hover {
+            opacity: 1;
+        }
+        #graphOverlay .graph-node.current {
+            fill: #ffd88f;
+            opacity: 0.92;
+            cursor: default;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-node.selected {
+            opacity: 1;
+            fill: #ffac64;
+        }
+        #graphOverlay .graph-node.historical {
+            fill: #6f8298;
+            opacity: 0.12;
+            cursor: default;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-node.dimmed,
+        #graphOverlay .graph-label.dimmed {
+            opacity: 0.1;
+        }
+        #graphOverlay .graph-label {
+            fill: rgba(255, 255, 255, 0.88);
+            font-family: monospace;
+            font-size: 12px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        #graphOverlay .graph-label.historical {
+            display: none;
+        }
+        #graphOverlay .continuity-arrow {
+            stroke: rgba(255, 220, 100, 0.92);
+            stroke-width: 2.5;
+            fill: none;
+        }
+        #turnControl {
+            position: fixed;
+            top: calc(100px + 8px);
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            font-family: monospace;
+        }
+        #turnLabel {
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+        #turnSwitch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+            background: rgba(7, 11, 24, 0.7);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+        }
+        .turnSide {
+            min-width: 92px;
+            padding: 11px 18px;
+            border: 0;
+            color: rgba(255, 255, 255, 0.74);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: default;
+            transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease, color 120ms ease;
+        }
+        .turnSide.blue {
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+        }
+        .turnSide.red {
+            background: linear-gradient(180deg, #ff6767 0%, #c91e1e 100%);
+        }
+        .turnSide:not(.active) {
+            filter: saturate(0.5) brightness(0.72);
+        }
+        .turnSide.active {
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
+        }
+        /* --- Config overlay --- */
+        #configOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            background: rgba(10, 12, 26, 0.92);
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            color: #e8e8e8;
+        }
+        #configOverlay.visible {
+            display: flex;
+        }
+        #configInner {
+            display: flex;
+            flex-direction: row;
+            gap: 32px;
+            background: rgba(24, 28, 52, 0.98);
+            border: 1px solid rgba(120, 140, 200, 0.3);
+            border-radius: 12px;
+            padding: 32px 36px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+            min-width: 640px;
+            align-items: flex-start;
+        }
+        .cfgPlayerPanel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 170px;
+        }
+        .cfgPlayerTitle {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        #configP1 .cfgPlayerTitle { color: rgb(220, 60, 60); }
+        #configP2 .cfgPlayerTitle { color: rgb(60, 100, 220); }
+        .cfgRadioGroup {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .cfgRadioGroup label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .cfgPolicySelect {
+            margin-top: 6px;
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-family: monospace;
+            font-size: 13px;
+            width: 100%;
+        }
+        .cfgPolicySelect:disabled { opacity: 0.35; }
+        #cfgCenter {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 200px;
+            align-items: center;
+        }
+        #cfgTitle {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            margin-bottom: 4px;
+        }
+        .cfgSettingRow {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 100%;
+        }
+        .cfgSettingRow label {
+            font-size: 12px;
+            color: rgba(200, 200, 220, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .cfgSettingInput {
+            background: rgba(40, 44, 70, 0.9);
+            color: #e8e8e8;
+            border: 1px solid rgba(120, 140, 200, 0.35);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-family: monospace;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #cfgError {
+            color: rgb(255, 100, 80);
+            font-size: 13px;
+            min-height: 18px;
+            text-align: center;
+        }
+        #cfgStart {
+            margin-top: 8px;
+            padding: 12px 32px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+        }
+        #cfgStart:hover:not(:disabled) { filter: brightness(1.12); }
+        #cfgStart:disabled { filter: saturate(0.4) brightness(0.7); cursor: default; }
+        /* --- Play Again overlay --- */
+        #playAgainOverlay {
+            display: none;
+            position: fixed;
+            bottom: 60px;
+            left: 0;
+            right: 0;
+            z-index: 22;
+            align-items: center;
+            justify-content: center;
+        }
+        #playAgainOverlay.visible {
+            display: flex;
+        }
+        #playAgainBtn {
+            padding: 14px 44px;
+            background: linear-gradient(180deg, #4f8cff 0%, #1450d9 100%);
+            color: #fff;
+            border: 0;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: filter 120ms;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        #playAgainBtn:hover { filter: brightness(1.15); }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="hud">
+      <div id="hudTurnRow">Turn <span id="hudTurnNumber">-</span></div>
+      <div id="hudPositionName">-</div>
+      <div id="hudScoreRow">
+        <span id="hudP1Score">P1: 0</span>
+        <span id="hudP2Score">P2: 0</span>
+      </div>
+      <div id="hudFlashRow">
+        <span id="hudP1Flash"></span>
+        <span id="hudP2Flash"></span>
+      </div>
+    </div>
+    <div id="hudAnnouncement" class="hidden"></div>
+    <div id="configOverlay">
+        <div id="configInner">
+            <div id="configP1" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 1</div>
+                <div class="cfgRadioGroup" id="cfgP1Radios"></div>
+                <select id="cfgP1Policy" class="cfgPolicySelect"></select>
+            </div>
+            <div id="cfgCenter">
+                <div id="cfgTitle">Configure Match</div>
+                <div class="cfgSettingRow">
+                    <label for="cfgMaxTurns">Max Turns</label>
+                    <input id="cfgMaxTurns" type="number" class="cfgSettingInput" value="30" min="1" max="500">
+                </div>
+                <div class="cfgSettingRow">
+                    <label for="cfgTurnDelay">Turn Delay (s)</label>
+                    <input id="cfgTurnDelay" type="number" class="cfgSettingInput" value="0.0" min="0" max="5" step="0.1">
+                </div>
+                <div id="cfgError"></div>
+                <button id="cfgStart">Start</button>
+            </div>
+            <div id="configP2" class="cfgPlayerPanel">
+                <div class="cfgPlayerTitle">Player 2</div>
+                <div class="cfgRadioGroup" id="cfgP2Radios"></div>
+                <select id="cfgP2Policy" class="cfgPolicySelect"></select>
+            </div>
+        </div>
+    </div>
+    <div id="playAgainOverlay">
+        <button id="playAgainBtn">Play Again</button>
+    </div>
+    <svg id="graphOverlay"></svg>
+    <div id="status">Connecting...</div>
+    <div id="turnControl">
+        <div id="turnLabel">Turn</div>
+        <div id="turnSwitch" role="group" aria-label="Active player turn">
+            <button id="blueTurnButton" class="turnSide blue active" type="button" aria-pressed="true">Blue</button>
+            <button id="redTurnButton" class="turnSide red" type="button" aria-pressed="false">Red</button>
+        </div>
+    </div>
+    <script>
+    // === Joint indices (23 joints per player) ===
+    const LeftToe=0, RightToe=1, LeftHeel=2, RightHeel=3,
+          LeftAnkle=4, RightAnkle=5, LeftKnee=6, RightKnee=7,
+          LeftHip=8, RightHip=9, LeftShoulder=10, RightShoulder=11,
+          LeftElbow=12, RightElbow=13, LeftWrist=14, RightWrist=15,
+          LeftHand=16, RightHand=17, LeftFingers=18, RightFingers=19,
+          Core=20, Neck=21, Head=22;
+
+    const NUM_JOINTS = 23;
+
+    // === Segments: [[from_joint, to_joint], length, radius_center, tapered] ===
+    const segments = [
+        [[LeftToe, LeftHeel], 0.23, 0.025, true],
+        [[LeftToe, LeftAnkle], 0.18, 0.025, true],
+        [[LeftHeel, LeftAnkle], 0.09, 0.025, true],
+        [[LeftAnkle, LeftKnee], 0.43, 0.055, true],
+        [[LeftKnee, LeftHip], 0.43, 0.085, true],
+        [[LeftHip, Core], 0.27, 0.1, true],
+        [[Core, LeftShoulder], 0.37, 0.075, true],
+        [[LeftShoulder, LeftElbow], 0.29, 0.06, true],
+        [[LeftElbow, LeftWrist], 0.26, 0.03, true],
+        [[LeftWrist, LeftHand], 0.08, 0.02, true],
+        [[LeftHand, LeftFingers], 0.08, 0.02, true],
+        [[LeftWrist, LeftFingers], 0.14, 0.02, false],
+        [[RightToe, RightHeel], 0.23, 0.025, true],
+        [[RightToe, RightAnkle], 0.18, 0.025, true],
+        [[RightHeel, RightAnkle], 0.09, 0.025, true],
+        [[RightAnkle, RightKnee], 0.43, 0.055, true],
+        [[RightKnee, RightHip], 0.43, 0.085, true],
+        [[RightHip, Core], 0.27, 0.1, true],
+        [[Core, RightShoulder], 0.37, 0.075, true],
+        [[RightShoulder, RightElbow], 0.29, 0.06, true],
+        [[RightElbow, RightWrist], 0.26, 0.03, true],
+        [[RightWrist, RightHand], 0.08, 0.02, true],
+        [[RightHand, RightFingers], 0.08, 0.02, true],
+        [[RightWrist, RightFingers], 0.14, 0.02, false],
+        [[LeftHip, RightHip], 0.23, 0.1, false],
+        [[LeftShoulder, Neck], 0.175, 0.065, true],
+        [[RightShoulder, Neck], 0.175, 0.065, true],
+        [[Neck, Head], 0.165, 0.05, true],
+    ];
+
+    // === Joints: [radius, render_as_sphere] ===
+    const joints = [
+        [0.025, false], [0.025, false], [0.03, false], [0.03, false],
+        [0.03, true], [0.03, true], [0.05, true], [0.05, true],
+        [0.09, true], [0.09, true], [0.08, true], [0.08, true],
+        [0.045, true], [0.045, true], [0.02, false], [0.02, false],
+        [0.02, true], [0.02, true], [0.02, false], [0.02, false],
+        [0.1, false], [0.05, false], [0.11, true],
+    ];
+
+    // === Babylon.js setup ===
+    const canvas = document.getElementById('renderCanvas');
+    const engine = new BABYLON.Engine(canvas, true);
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0.1, 0.1, 0.18, 1);
+
+    const camera = new BABYLON.ArcRotateCamera('cam', Math.PI / 2, Math.PI / 3, 3, new BABYLON.Vector3(0, 0.5, 0), scene);
+    camera.attachControl(canvas, true);
+    camera.lowerRadiusLimit = 1;
+    camera.upperRadiusLimit = 8;
+
+    const light = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.9;
+    const dirLight = new BABYLON.DirectionalLight('dir', new BABYLON.Vector3(-1, -2, 1), scene);
+    dirLight.intensity = 0.5;
+
+    // Ground grid
+    const gridSize = 4;
+    const grey = new BABYLON.Color3(0.35, 0.35, 0.4);
+    for (let i = -gridSize; i <= gridSize; i++) {
+        const lx = BABYLON.MeshBuilder.CreateLines("lx", {
+            points: [new BABYLON.Vector3(i, 0, -gridSize), new BABYLON.Vector3(i, 0, gridSize)]
+        }, scene);
+        lx.color = grey;
+        const lz = BABYLON.MeshBuilder.CreateLines("lz", {
+            points: [new BABYLON.Vector3(-gridSize, 0, i), new BABYLON.Vector3(gridSize, 0, i)]
+        }, scene);
+        lz.color = grey;
+    }
+
+    // === Player materials ===
+    const skins = [
+        new BABYLON.StandardMaterial("redskin", scene),
+        new BABYLON.StandardMaterial("blueskin", scene)
+    ];
+    skins[0].diffuseColor = new BABYLON.Color3(0.8, 0.15, 0.1);
+    skins[1].diffuseColor = new BABYLON.Color3(0.1, 0.2, 0.85);
+    skins[0].specularColor = new BABYLON.Color3(1, 0.3, 0.2);
+    skins[1].specularColor = new BABYLON.Color3(0.2, 0.3, 1);
+    skins[0].specularPower = 8;
+    skins[1].specularPower = 8;
+
+    // === Cylinder geometry (from GrappleMap gm.js) ===
+    function cylinderPaths(fromRadius, toRadius, from, to, faces) {
+        const dir = to.subtract(from);
+        let a = BABYLON.Vector3.Cross(dir, new BABYLON.Vector3(1, 1, 1).subtract(from)).normalize();
+        if (a.length() < 0.001) a = BABYLON.Vector3.Cross(dir, BABYLON.Vector3.Right()).normalize();
+        const b = BABYLON.Vector3.Cross(dir, a).normalize();
+        const s = (Math.PI * 2) / faces;
+        const p0 = [], p1 = [];
+        for (let i = faces; i >= 0; --i) {
+            p0.push(from.add(a.scale(fromRadius * Math.sin(i * s))).add(b.scale(fromRadius * Math.cos(i * s))));
+            p1.push(to.add(a.scale(toRadius * Math.sin(i * s))).add(b.scale(toRadius * Math.cos(i * s))));
+        }
+        return [p0, p1];
+    }
+
+    function animatedCylinder(fromRadius, toRadius, from, to, faces, scene) {
+        const path = cylinderPaths(fromRadius, toRadius, from, to, faces);
+        const mesh = BABYLON.MeshBuilder.CreateRibbon("seg", { pathArray: path, updatable: true }, scene);
+        let positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        let indices = mesh.getIndices();
+        let normals = new Float32Array(positions.length);
+
+        mesh.update = function(from_, to_) {
+            const paths = cylinderPaths(fromRadius, toRadius, from_, to_, faces);
+            let i = 0;
+            for (let pl = 0; pl < 2; pl++) {
+                for (let face = 0; face <= faces; face++) {
+                    const v = paths[pl][face];
+                    positions[i++] = v.x; positions[i++] = v.y; positions[i++] = v.z;
+                }
+            }
+            mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions, true);
+            BABYLON.VertexData.ComputeNormals(positions, indices, normals);
+            mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        };
+        return mesh;
+    }
+
+    // === Build player meshes ===
+    function toVec3(arr) { return new BABYLON.Vector3(arr[0], arr[1], arr[2]); }
+
+    function createPlayer(initJoints, material) {
+        const segUpdaters = [];
+
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            if (!seg[3]) { segUpdaters.push(null); continue; } // skip non-tapered
+
+            const jFrom = seg[0][0], jTo = seg[0][1];
+            const rFrom = joints[jFrom][0], rTo = joints[jTo][0], rCenter = seg[2];
+            const from = toVec3(initJoints[jFrom]), to = toVec3(initJoints[jTo]);
+            const center = from.add(to).scale(0.5);
+
+            const c1 = animatedCylinder(rFrom, rCenter, from, center, 10, scene);
+            const c2 = animatedCylinder(rCenter, rTo, center, to, 10, scene);
+            c1.material = material;
+            c2.material = material;
+
+            segUpdaters.push(function(f, t) {
+                const mid = f.add(t).scale(0.5);
+                c1.update(f, mid);
+                c2.update(mid, t);
+            });
+        }
+
+        const spheres = [];
+        for (let j = 0; j < NUM_JOINTS; j++) {
+            const sphere = BABYLON.MeshBuilder.CreateSphere('j' + j, { diameter: joints[j][0] * 2, segments: 6 }, scene);
+            sphere.material = material;
+            sphere.position = toVec3(initJoints[j]);
+            spheres.push(sphere);
+        }
+
+        return function(playerJoints) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                spheres[j].position = toVec3(playerJoints[j]);
+            }
+            for (let s = 0; s < segments.length; s++) {
+                if (segUpdaters[s]) {
+                    segUpdaters[s](toVec3(playerJoints[segments[s][0][0]]), toVec3(playerJoints[segments[s][0][1]]));
+                }
+            }
+        };
+    }
+
+    // === State ===
+    let playerUpdaters = null;
+    let currentPos = null;       // current displayed position [player0, player1]
+    let currentReo = null;       // incremental explorer-style reorientation state
+    let lastKeyframe = null;     // last settled keyframe in world space
+    const queuedFrames = [];     // transformed keyframes waiting to be played
+    let animK = 0;               // interpolation factor [0,1) to the next queued keyframe
+    const pendingGameEndEvents = []; // announcement/game_over msgs waiting for animation to finish
+    let gameEndFlushTimer = null;    // spaces game_over after an announcement's hold time
+    const graphOverlay = document.getElementById('graphOverlay');
+    let overlayEpoch = 0;
+    let lastTransitionToNodeId = null;
+    const AUTO_MOVE_PAN_MS = 200;   // compressed pan for moves that had no human click
+
+    function createOverlayState() {
+        return {
+            initialized: false,
+            svg: null,
+            defs: null,
+            clipRect: null,
+            group: null,
+            linkLayer: null,
+            nodeLayer: null,
+            labelLayer: null,
+            nodesById: new Map(),
+            linksByKey: new Map(),
+            currentNodeId: null,
+            activeMoveIds: new Set(),
+            pendingSelectedId: null,
+            panX: 0,
+            panY: 0,
+            graphSim: null,
+            agentSeedIndex: 0,
+            moveCommitted: false,
+            clickCommitted: false,
+            moveSent: false,
+            nodeSel: null,
+            linkSel: null,
+            labelSel: null,
+            renderNodes: [],
+            renderLinks: [],
+            panAnimId: 0
+        };
+    }
+
+    let overlayState = createOverlayState();
+
+    function truncateLabel(text, maxLen = 28) {
+        if (!text) return '';
+        if (text.length <= maxLen) return text;
+        return text.slice(0, maxLen - 1) + '...';
+    }
+
+    function overlayCenter() {
+        return { x: window.innerWidth * 0.28, y: window.innerHeight / 2 };
+    }
+
+    function overlayWindowRect() {
+        const center = overlayCenter();
+        const width = window.innerWidth * 0.48;
+        const height = window.innerHeight * 0.74;
+        return {
+            left: center.x - width / 2,
+            right: center.x + width / 2,
+            top: center.y - height / 2,
+            bottom: center.y + height / 2,
+            width,
+            height
+        };
+    }
+
+    function overlayNodeRadius(node) {
+        return node.current ? 19 : 15;
+    }
+
+    function overlayLinkKey(sourceId, targetId) {
+        return `${sourceId}->${targetId}`;
+    }
+
+    function resizeOverlayCanvas() {
+        graphOverlay.setAttribute('width', window.innerWidth);
+        graphOverlay.setAttribute('height', window.innerHeight);
+    }
+
+    function updateOverlayClipRect() {
+        if (!overlayState.initialized || !overlayState.clipRect) return;
+        const rect = overlayWindowRect();
+        overlayState.clipRect
+            .attr('x', rect.left)
+            .attr('y', rect.top)
+            .attr('width', rect.width)
+            .attr('height', rect.height);
+    }
+
+    function applyOverlayPan() {
+        if (!overlayState.initialized || !overlayState.group) return;
+        overlayState.group.attr('transform', `translate(${overlayState.panX},${overlayState.panY})`);
+    }
+
+    function graphCenterInGraphSpace() {
+        const center = overlayCenter();
+        return {
+            x: center.x - overlayState.panX,
+            y: center.y - overlayState.panY
+        };
+    }
+
+    function centerOverlayOnNode(node) {
+        if (!node) return;
+        overlayState.panAnimId += 1;
+        const center = overlayCenter();
+        overlayState.panX = center.x - node.x;
+        overlayState.panY = center.y - node.y;
+        applyOverlayPan();
+    }
+
+    function removeContinuityArrow() {
+        if (!overlayState.initialized || !overlayState.group) return;
+        overlayState.group.selectAll('.continuity-arrow').remove();
+    }
+
+    function resetOverlayScene() {
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+        d3.select(graphOverlay).selectAll('*').remove();
+        graphOverlay.classList.remove('visible');
+        overlayState = createOverlayState();
+    }
+
+    function overlayTick() {
+        if (!overlayState.initialized) return;
+        if (overlayState.linkSel) {
+            overlayState.linkSel.each(function(d) {
+                const source = d.source;
+                const target = d.target;
+                if (!source || !target) return;
+                const dx = target.x - source.x;
+                const dy = target.y - source.y;
+                const dist = Math.hypot(dx, dy) || 1;
+                const sr = overlayNodeRadius(source);
+                const tr = overlayNodeRadius(target);
+                d3.select(this)
+                    .attr('x1', source.x + dx / dist * sr)
+                    .attr('y1', source.y + dy / dist * sr)
+                    .attr('x2', target.x - dx / dist * tr)
+                    .attr('y2', target.y - dy / dist * tr);
+            });
+        }
+        if (overlayState.nodeSel) {
+            overlayState.nodeSel
+                .attr('cx', (d) => d.x)
+                .attr('cy', (d) => d.y);
+        }
+        if (overlayState.labelSel) {
+            overlayState.labelSel
+                .attr('x', (d) => d.x)
+                .attr('y', (d) => d.y + 32);
+        }
+    }
+
+    function ensureOverlayScene() {
+        resizeOverlayCanvas();
+        if (overlayState.initialized) {
+            updateOverlayClipRect();
+            return;
+        }
+
+        overlayState.svg = d3.select(graphOverlay);
+        overlayState.defs = overlayState.svg.append('defs');
+
+        const clipPath = overlayState.defs.append('clipPath')
+            .attr('id', 'graphHistoryWindow');
+        overlayState.clipRect = clipPath.append('rect');
+        updateOverlayClipRect();
+
+        overlayState.defs.append('marker')
+            .attr('id', 'graphArrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 10)
+            .attr('refY', 0)
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', 'rgba(255, 255, 255, 0.55)');
+
+        overlayState.defs.append('marker')
+            .attr('id', 'continuityArrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 10)
+            .attr('refY', 0)
+            .attr('markerWidth', 7)
+            .attr('markerHeight', 7)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', 'rgba(255,220,100,0.9)');
+
+        // Outer group: holds only the clip, no transform — so the clipPath rect
+        // is evaluated in SVG/screen space (not in the panned graph space).
+        const clipGroup = overlayState.svg.append('g')
+            .attr('clip-path', 'url(#graphHistoryWindow)');
+        // Inner group: holds only the pan transform, no clip-path.
+        overlayState.group = clipGroup.append('g')
+            .attr('class', 'graph-group');
+        overlayState.linkLayer = overlayState.group.append('g').attr('class', 'graph-links');
+        overlayState.nodeLayer = overlayState.group.append('g').attr('class', 'graph-nodes');
+        overlayState.labelLayer = overlayState.group.append('g').attr('class', 'graph-labels');
+        applyOverlayPan();
+
+        overlayState.graphSim = d3.forceSimulation([])
+            .force('link', d3.forceLink([]).id((d) => d.id).distance(150).strength(0.72))
+            .force('charge', d3.forceManyBody().strength(-420))
+            .force('collide', d3.forceCollide(30))
+            .on('tick', overlayTick);
+
+        overlayState.initialized = true;
+    }
+
+    function ensureOverlayNode(nodeId, options = {}) {
+        const id = String(nodeId);
+        let node = overlayState.nodesById.get(id);
+        if (!node) {
+            const center = graphCenterInGraphSpace();
+            node = {
+                id,
+                label: options.label || (`Node ${id}`),
+                x: options.x !== undefined ? options.x : center.x,
+                y: options.y !== undefined ? options.y : center.y,
+                current: false,
+                selectable: false,
+                historical: true,
+                transition_id: options.transition_id ?? null,
+                lastSeenEpoch: overlayEpoch
+            };
+            overlayState.nodesById.set(id, node);
+        }
+
+        if (options.label !== undefined) node.label = options.label;
+        if (options.transition_id !== undefined) node.transition_id = options.transition_id;
+        if (options.x !== undefined && node.x == null) node.x = options.x;
+        if (options.y !== undefined && node.y == null) node.y = options.y;
+        node.lastSeenEpoch = overlayEpoch;
+        return node;
+    }
+
+    function ensureOverlayLink(sourceId, targetId) {
+        const source = String(sourceId);
+        const target = String(targetId);
+        const key = overlayLinkKey(source, target);
+        let link = overlayState.linksByKey.get(key);
+        if (!link) {
+            link = {
+                key,
+                source,
+                target,
+                historical: true,
+                selectedPath: false
+            };
+            overlayState.linksByKey.set(key, link);
+        }
+        return link;
+    }
+
+    function pinCurrentNode() {
+        const center = graphCenterInGraphSpace();
+        for (const node of overlayState.nodesById.values()) {
+            if (node.current) {
+                node.fx = center.x;
+                node.fy = center.y;
+            } else {
+                node.fx = null;
+                node.fy = null;
+            }
+        }
+    }
+
+    function buildOverlayRenderLinks() {
+        const links = [];
+        for (const link of overlayState.linksByKey.values()) {
+            const source = overlayState.nodesById.get(String(link.source));
+            const target = overlayState.nodesById.get(String(link.target));
+            if (!source || !target) continue;
+            links.push({
+                key: link.key,
+                source,
+                target,
+                historical: link.historical,
+                selectedPath: link.selectedPath
+            });
+        }
+        return links;
+    }
+
+    function pruneOffscreenHistory() {
+        if (!overlayState.initialized) return;
+        const rect = overlayWindowRect();
+
+        for (const [id, node] of overlayState.nodesById.entries()) {
+            if (node.current || node.selectable) continue;
+            const radius = overlayNodeRadius(node);
+            const screenX = node.x + overlayState.panX;
+            const screenY = node.y + overlayState.panY;
+            const outside = (
+                screenX + radius < rect.left ||
+                screenX - radius > rect.right ||
+                screenY + radius < rect.top ||
+                screenY - radius > rect.bottom
+            );
+            if (outside) {
+                overlayState.nodesById.delete(id);
+                overlayState.activeMoveIds.delete(id);
+                if (overlayState.pendingSelectedId === id) {
+                    overlayState.pendingSelectedId = null;
+                }
+            }
+        }
+
+        for (const [key, link] of overlayState.linksByKey.entries()) {
+            const sourceExists = overlayState.nodesById.has(String(link.source));
+            const targetExists = overlayState.nodesById.has(String(link.target));
+            if (!sourceExists || !targetExists) {
+                overlayState.linksByKey.delete(key);
+            }
+        }
+    }
+
+    function drawContinuityArrow(sourceNode, targetNode) {
+        if (!sourceNode || !targetNode || !overlayState.initialized || !overlayState.group) return;
+        removeContinuityArrow();
+
+        const dx = targetNode.x - sourceNode.x;
+        const dy = targetNode.y - sourceNode.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const sr = overlayNodeRadius(sourceNode);
+        const tr = overlayNodeRadius(targetNode);
+        const x1 = sourceNode.x + dx / dist * sr;
+        const y1 = sourceNode.y + dy / dist * sr;
+        const x2 = targetNode.x - dx / dist * tr;
+        const y2 = targetNode.y - dy / dist * tr;
+
+        const line = overlayState.group.insert('line', ':first-child')
+            .attr('class', 'continuity-arrow')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('marker-end', 'url(#continuityArrow)');
+
+        const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+        line.attr('stroke-dasharray', length)
+            .attr('stroke-dashoffset', length)
+            .transition()
+            .duration(300)
+            .attr('stroke-dashoffset', 0);
+    }
+
+    function animateOverlayPanToNode(node, duration, onDone) {
+        if (!node) {
+            if (onDone) onDone();
+            return;
+        }
+
+        const center = overlayCenter();
+        const targetPanX = center.x - node.x;
+        const targetPanY = center.y - node.y;
+        const startPanX = overlayState.panX;
+        const startPanY = overlayState.panY;
+
+        if (!duration || duration <= 0) {
+            overlayState.panX = targetPanX;
+            overlayState.panY = targetPanY;
+            applyOverlayPan();
+            if (onDone) onDone();
+            return;
+        }
+
+        overlayState.panAnimId += 1;
+        const myAnimId = overlayState.panAnimId;
+        const start = performance.now();
+
+        function easeInOutCubic(t) {
+            return t < 0.5
+                ? 4 * t * t * t
+                : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function animate(now) {
+            if (overlayState.panAnimId !== myAnimId) return;
+            const t = Math.min((now - start) / duration, 1);
+            const e = easeInOutCubic(t);
+            overlayState.panX = startPanX + (targetPanX - startPanX) * e;
+            overlayState.panY = startPanY + (targetPanY - startPanY) * e;
+            applyOverlayPan();
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else if (onDone) {
+                onDone();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    // Python blocks on exactly one queue read per legal_moves message, so a second
+    // move_selected in the same turn is not consumed until the *next* turn, desyncing
+    // the rest of the game. moveSent is reset only in renderLegalMovesOverlay, which
+    // brackets exactly one click opportunity (it is the only place nodes become
+    // selectable, and mergeTransitionOverlay clears selectable on all of them).
+    function sendMoveSelected(nodeId) {
+        if (overlayState.moveSent) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        overlayState.moveSent = true;
+        ws.send(JSON.stringify({ type: 'move_selected', to_node: Number(nodeId) }));
+    }
+
+    function onOverlayNodeClick(event, node) {
+        if (overlayState.moveCommitted || node.current || !node.selectable) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        overlayState.moveCommitted = true;
+        overlayState.clickCommitted = true;
+        overlayState.pendingSelectedId = node.id;
+        // Send before any animation. Sending from the pan's onDone meant a superseded
+        // pan (e.g. a window resize bumping panAnimId) dropped the message entirely,
+        // leaving Python blocked forever on selected_nodes.get(). The pan below is now
+        // purely visual and cannot affect the protocol.
+        sendMoveSelected(node.id);
+
+        for (const link of overlayState.linksByKey.values()) {
+            link.selectedPath = (
+                String(link.source) === overlayState.currentNodeId &&
+                String(link.target) === node.id
+            );
+        }
+        renderOverlayData();
+
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+
+        const sourceNode = overlayState.currentNodeId
+            ? overlayState.nodesById.get(overlayState.currentNodeId)
+            : null;
+        // Usually superseded: the transition now arrives within milliseconds and
+        // mergeTransitionOverlay starts its own pan to this same node. This callback
+        // only runs when that reply is slow, so treat it as a fallback, not the
+        // normal path.
+        animateOverlayPanToNode(node, 900, () => {
+            pruneOffscreenHistory();
+            renderOverlayData();
+            drawContinuityArrow(sourceNode, node);
+        });
+    }
+
+    function renderOverlayData() {
+        if (!overlayState.initialized) return { nodes: [], links: [] };
+
+        updateOverlayClipRect();
+        applyOverlayPan();
+
+        const nodes = Array.from(overlayState.nodesById.values());
+        const links = buildOverlayRenderLinks();
+        overlayState.renderNodes = nodes;
+        overlayState.renderLinks = links;
+
+        const currentId = overlayState.currentNodeId;
+        const pendingId = overlayState.pendingSelectedId;
+        const moveCommitted = overlayState.moveCommitted;
+
+        overlayState.linkSel = overlayState.linkLayer
+            .selectAll('line.graph-link')
+            .data(links, (d) => d.key)
+            .join(
+                (enter) => enter.append('line').attr('class', 'graph-link'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .classed('historical', (d) => d.historical)
+            .classed('dimmed', (d) => {
+                if (!moveCommitted) return false;
+                if (d.selectedPath) return false;
+                return !(d.source.id === currentId && d.target.id === pendingId);
+            });
+
+        overlayState.nodeSel = overlayState.nodeLayer
+            .selectAll('circle.graph-node')
+            .data(nodes, (d) => d.id)
+            .join(
+                (enter) => enter.append('circle').attr('class', 'graph-node'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .attr('class', (d) => {
+                const classes = ['graph-node'];
+                if (d.current) classes.push('current');
+                if (d.selectable) classes.push('selectable');
+                if (d.historical) classes.push('historical');
+                if (moveCommitted && d.id === pendingId) classes.push('selected');
+                if (moveCommitted && !d.current && d.id !== pendingId) classes.push('dimmed');
+                return classes.join(' ');
+            })
+            .attr('r', (d) => overlayNodeRadius(d))
+            .style('pointer-events', (d) => (
+                !overlayState.moveCommitted && d.selectable && !d.current
+                    ? 'auto'
+                    : 'none'
+            ))
+            .on('click', onOverlayNodeClick);
+
+        overlayState.labelSel = overlayState.labelLayer
+            .selectAll('text.graph-label')
+            .data(nodes, (d) => d.id)
+            .join(
+                (enter) => enter.append('text').attr('class', 'graph-label'),
+                (update) => update,
+                (exit) => exit.remove()
+            )
+            .attr('class', (d) => {
+                const classes = ['graph-label'];
+                if (d.historical) classes.push('historical');
+                if (moveCommitted && !d.current && d.id !== pendingId) classes.push('dimmed');
+                return classes.join(' ');
+            })
+            .text((d) => d.label || (`Node ${d.id}`));
+
+        overlayTick();
+        graphOverlay.classList.toggle('visible', nodes.length > 0);
+        return { nodes, links };
+    }
+
+    function restartOverlaySimulation(alpha = 0.22) {
+        if (!overlayState.initialized || !overlayState.graphSim) return;
+        pinCurrentNode();
+        overlayState.graphSim.nodes(overlayState.renderNodes);
+        overlayState.graphSim.force('link').links(overlayState.renderLinks);
+        overlayState.graphSim.alpha(alpha).restart();
+    }
+
+    function renderLegalMovesOverlay(msg) {
+        ensureOverlayScene();
+        overlayEpoch += 1;
+        removeContinuityArrow();
+
+        overlayState.moveCommitted = false;
+        overlayState.clickCommitted = false;
+        overlayState.moveSent = false;
+        overlayState.pendingSelectedId = null;
+        overlayState.activeMoveIds.clear();
+
+        const currentNodeId = String(msg.current_node);
+        const centerGraph = graphCenterInGraphSpace();
+        const currentNode = ensureOverlayNode(currentNodeId, {
+            label: truncateLabel(currentPositionName) || `Node ${currentNodeId}`,
+            x: centerGraph.x,
+            y: centerGraph.y,
+            transition_id: null
+        });
+
+        for (const node of overlayState.nodesById.values()) {
+            node.current = false;
+            node.selectable = false;
+            node.historical = true;
+        }
+
+        currentNode.current = true;
+        currentNode.selectable = false;
+        currentNode.historical = false;
+        currentNode.label = truncateLabel(currentPositionName) || `Node ${currentNodeId}`;
+        currentNode.transition_id = null;
+        overlayState.currentNodeId = currentNodeId;
+
+        const moves = msg.moves || [];
+        for (let i = 0; i < moves.length; i++) {
+            const move = moves[i];
+            const moveNodeId = String(move.to_node);
+            const angle = (2 * Math.PI / Math.max(moves.length, 1)) * i - Math.PI / 2;
+            const seededX = currentNode.x + 160 * Math.cos(angle);
+            const seededY = currentNode.y + 160 * Math.sin(angle);
+
+            const targetNode = ensureOverlayNode(moveNodeId, {
+                label: truncateLabel(move.description || (`Node ${move.to_node}`)),
+                x: seededX,
+                y: seededY,
+                transition_id: move.transition_id ?? null
+            });
+            // Always place selectable nodes near the current node, even if the node
+            // existed previously with coordinates from an earlier turn's simulation.
+            targetNode.x = seededX;
+            targetNode.y = seededY;
+            targetNode.vx = 0;
+            targetNode.vy = 0;
+            if (targetNode.lastSeenEpoch !== overlayEpoch) {
+                targetNode.lastSeenEpoch = overlayEpoch;
+            }
+            targetNode.current = false;
+            targetNode.selectable = true;
+            targetNode.historical = false;
+            targetNode.label = truncateLabel(move.description || (`Node ${move.to_node}`));
+            targetNode.transition_id = move.transition_id ?? null;
+
+            overlayState.activeMoveIds.add(moveNodeId);
+            const link = ensureOverlayLink(currentNodeId, moveNodeId);
+            link.historical = false;
+            link.selectedPath = false;
+        }
+
+        for (const link of overlayState.linksByKey.values()) {
+            const isActiveTurnEdge = (
+                String(link.source) === currentNodeId &&
+                overlayState.activeMoveIds.has(String(link.target))
+            );
+            link.historical = !isActiveTurnEdge;
+            link.selectedPath = false;
+        }
+
+        centerOverlayOnNode(currentNode);
+        pruneOffscreenHistory();
+        renderOverlayData();
+        restartOverlaySimulation(0.22);
+    }
+
+    function mergeTransitionOverlay(msg) {
+        // Only a human click commits a move ahead of the transition arriving, so this
+        // also stays true for a rapid follow-up transition that lands mid auto-preview.
+        const wasAutoMove = !overlayState.clickCommitted;
+        ensureOverlayScene();
+        overlayEpoch += 1;
+        removeContinuityArrow();
+
+        const fromId = String(msg.from_node);
+        const toId = String(msg.to_node);
+
+        let fromNode = overlayState.nodesById.get(fromId);
+        if (!fromNode) {
+            const center = graphCenterInGraphSpace();
+            fromNode = ensureOverlayNode(fromId, {
+                label: `Node ${fromId}`,
+                x: center.x,
+                y: center.y
+            });
+        } else {
+            fromNode.lastSeenEpoch = overlayEpoch;
+        }
+
+        let toNode = overlayState.nodesById.get(toId);
+        if (!toNode) {
+            const angle = (-Math.PI / 2) + overlayState.agentSeedIndex * (Math.PI / 3);
+            overlayState.agentSeedIndex += 1;
+            toNode = ensureOverlayNode(toId, {
+                label: `Node ${toId}`,
+                x: fromNode.x + 150 * Math.cos(angle),
+                y: fromNode.y + 150 * Math.sin(angle)
+            });
+        } else {
+            toNode.lastSeenEpoch = overlayEpoch;
+        }
+
+        ensureOverlayLink(fromId, toId);
+
+        for (const node of overlayState.nodesById.values()) {
+            node.current = false;
+            node.selectable = false;
+            node.historical = true;
+        }
+        toNode.current = true;
+        toNode.selectable = false;
+        toNode.historical = false;
+        toNode.label = truncateLabel(currentPositionName) || `Node ${toId}`;
+        overlayState.currentNodeId = toId;
+
+        overlayState.activeMoveIds.clear();
+        overlayState.pendingSelectedId = null;
+        overlayState.moveCommitted = false;
+        overlayState.clickCommitted = false;
+
+        for (const link of overlayState.linksByKey.values()) {
+            const isTransitionEdge = (
+                String(link.source) === fromId &&
+                String(link.target) === toId
+            );
+            link.historical = !isTransitionEdge;
+            link.selectedPath = false;
+        }
+
+        if (overlayState.graphSim) {
+            overlayState.graphSim.stop();
+        }
+
+        // Both paths spotlight the destination in orange, dim everything else, glide
+        // over and settle. An auto-move (computer turn or forced move) gets a
+        // compressed pan because no click preceded it; a click gets the full glide.
+        //
+        // The click path used to skip the spotlight, assuming the click's own 1120ms
+        // of selection feedback had already played out. That stopped holding once
+        // move_selected moved to click time: Visualizer3D sends the transition before
+        // its turn_delay sleep, so this handler now runs within milliseconds of the
+        // click and the resets above would otherwise wipe the highlight instantly.
+        const panMs = wasAutoMove ? AUTO_MOVE_PAN_MS : 900;
+        overlayState.pendingSelectedId = toId;
+        overlayState.moveCommitted = true;
+        const transitionLink = overlayState.linksByKey.get(overlayLinkKey(fromId, toId));
+        if (transitionLink) {
+            transitionLink.selectedPath = true;
+        }
+        renderOverlayData();
+
+        animateOverlayPanToNode(toNode, panMs, () => {
+            overlayState.pendingSelectedId = null;
+            overlayState.moveCommitted = false;
+            if (transitionLink) {
+                transitionLink.selectedPath = false;
+            }
+            pruneOffscreenHistory();
+            renderOverlayData();
+            restartOverlaySimulation(0.22);
+        });
+    }
+
+    function initPlayers(posData) {
+        if (playerUpdaters) return; // already created
+        playerUpdaters = [
+            createPlayer(posData[0], skins[0]),
+            createPlayer(posData[1], skins[1])
+        ];
+    }
+
+    // === Interpolation (replicates GrappleMap's interpolate_position) ===
+    function lerpJoint(a, b, t) {
+        return [
+            a[0] + (b[0] - a[0]) * t,
+            a[1] + (b[1] - a[1]) * t,
+            a[2] + (b[2] - a[2]) * t
+        ];
+    }
+
+    function interpolatePosition(posA, posB, t) {
+        const result = [[], []];
+        for (let pl = 0; pl < 2; pl++) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                result[pl].push(lerpJoint(posA[pl][j], posB[pl][j], t));
+            }
+        }
+        return result;
+    }
+
+    function addVec3(a, b) {
+        return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    }
+
+    function negateVec3(v) {
+        return [-v[0], -v[1], -v[2]];
+    }
+
+    function yRotate(angle, v) {
+        return [
+            Math.cos(angle) * v[0] + Math.sin(angle) * v[2],
+            v[1],
+            -Math.sin(angle) * v[0] + Math.cos(angle) * v[2]
+        ];
+    }
+
+    function swap(arr, a, b) {
+        const temp = arr[a];
+        arr[a] = arr[b];
+        arr[b] = temp;
+    }
+
+    function swapLimbs(player) {
+        swap(player, LeftShoulder, RightShoulder);
+        swap(player, LeftElbow, RightElbow);
+        swap(player, LeftHand, RightHand);
+        swap(player, LeftFingers, RightFingers);
+        swap(player, LeftWrist, RightWrist);
+        swap(player, LeftAnkle, RightAnkle);
+        swap(player, LeftToe, RightToe);
+        swap(player, LeftHip, RightHip);
+        swap(player, LeftHeel, RightHeel);
+        swap(player, LeftKnee, RightKnee);
+    }
+
+    function mirrorPosition(pos) {
+        for (let pl = 0; pl < 2; pl++) {
+            for (let j = 0; j < NUM_JOINTS; j++) {
+                pos[pl][j][0] = -pos[pl][j][0];
+            }
+            swapLimbs(pos[pl]);
+        }
+    }
+
+    function copyReo(reo) {
+        return {
+            mirror: reo.mirror,
+            swap_players: reo.swap_players,
+            angle: reo.angle,
+            offset: [...reo.offset]
+        };
+    }
+
+    function zeroReo() {
+        return {
+            mirror: false,
+            swap_players: false,
+            angle: 0,
+            offset: [0, 0, 0]
+        };
+    }
+
+    function applyReo(reo, pos) {
+        let transformed = pos.map((player) =>
+            player.map((joint) => addVec3(yRotate(reo.angle, joint), reo.offset))
+        );
+
+        if (reo.mirror) {
+            mirrorPosition(transformed);
+        }
+
+        if (reo.swap_players) {
+            transformed = [transformed[1], transformed[0]];
+        }
+
+        return transformed;
+    }
+
+    function inverseReo(reo) {
+        const inverted = {
+            offset: yRotate(-reo.angle, negateVec3(reo.offset)),
+            angle: -reo.angle,
+            mirror: reo.mirror,
+            swap_players: reo.swap_players
+        };
+
+        if (reo.mirror) {
+            inverted.angle = -inverted.angle;
+            inverted.offset[0] = -inverted.offset[0];
+        }
+
+        return inverted;
+    }
+
+    function composeReo(a, b) {
+        const combined = {
+            mirror: a.mirror !== b.mirror,
+            swap_players: a.swap_players !== b.swap_players,
+            angle: 0,
+            offset: [0, 0, 0]
+        };
+
+        if (a.mirror) {
+            const mirroredOffset = [-b.offset[0], b.offset[1], b.offset[2]];
+            combined.angle = a.angle - b.angle;
+            combined.offset = addVec3(mirroredOffset, yRotate(-b.angle, a.offset));
+        } else {
+            combined.angle = a.angle + b.angle;
+            combined.offset = addVec3(b.offset, yRotate(b.angle, a.offset));
+        }
+
+        return combined;
+    }
+
+    // === Frame doubling (replicates GrappleMap's double_frames) ===
+    // For non-detailed transitions, insert a midpoint between each
+    // pair of consecutive keyframes for smoother playback.
+    function doubleFrames(frames) {
+        if (frames.length < 2) return frames;
+        const result = [frames[0]];
+        for (let i = 0; i < frames.length - 1; i++) {
+            result.push(interpolatePosition(frames[i], frames[i + 1], 0.5));
+            result.push(frames[i + 1]);
+        }
+        return result;
+    }
+
+    function updateDisplay() {
+        if (!playerUpdaters || !currentPos) return;
+        for (let pl = 0; pl < 2; pl++) {
+            playerUpdaters[pl](currentPos[pl]);
+        }
+    }
+
+    function queueTransitionFrames(msg) {
+        let frames = msg.frames;
+        if (!frames || frames.length === 0) {
+            return;
+        }
+
+        if (!msg.detailed) {
+            frames = doubleFrames(frames);
+        }
+
+        const startReo = msg.reverse
+            ? composeReo(inverseReo(msg.to_reo), currentReo)
+            : composeReo(inverseReo(msg.from_reo), currentReo);
+
+        if (!currentPos) {
+            const startFrame = msg.reverse ? frames[frames.length - 1] : frames[0];
+            const startPos = applyReo(startReo, startFrame);
+            if (!playerUpdaters) initPlayers(startPos);
+            currentPos = startPos;
+            lastKeyframe = startPos;
+        }
+
+        if (msg.reverse) {
+            for (let i = frames.length - 1; i > 0; i--) {
+                const isLast = (i === 1);
+                queuedFrames.push({
+                    pos: applyReo(startReo, frames[i - 1]),
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
+                });
+            }
+            currentReo = composeReo(msg.from_reo, startReo);
+        } else {
+            for (let i = 1; i < frames.length; i++) {
+                const isLast = (i === frames.length - 1);
+                queuedFrames.push({
+                    pos: applyReo(startReo, frames[i]),
+                    turn: isLast ? (msg.turn || null) : null,
+                    hud: isLast ? (msg.hud || null) : null
+                });
+            }
+            currentReo = composeReo(msg.to_reo, startReo);
+        }
+    }
+
+    // === Camera tracking (mirrors GrappleMap's tick() smoothing) ===
+    // Exponentially lerp camera.target toward the midpoint of both players' Core joints.
+    // Horizontal: 0.5% per frame. Vertical: 5% when rising, 0.5% when falling.
+    function updateCameraTarget() {
+        if (!currentPos) return;
+        const c0 = currentPos[0][Core];
+        const c1 = currentPos[1][Core];
+        const cx = (c0[0] + c1[0]) * 0.5;
+        const cy = Math.max(0, (c0[1] + c1[1]) * 0.5 - 0.5);
+        const cz = (c0[2] + c1[2]) * 0.5;
+
+        const tgt = camera.target;
+        const vspeed = cy > tgt.y ? 0.05 : 0.005;
+        tgt.x = cx * 0.005 + tgt.x * 0.995;
+        tgt.y = cy * vspeed + tgt.y * (1 - vspeed);
+        tgt.z = cz * 0.005 + tgt.z * 0.995;
+    }
+
+    // === Render loop ===
+    // This follows GrappleMap's live viewer model: transition messages are
+    // converted into a queue of transformed world-space keyframes, then each
+    // render tick interpolates from the last settled pose to the next one.
+    engine.runRenderLoop(function() {
+        const dt = engine.getDeltaTime(); // ms since last frame
+
+        if (lastKeyframe && queuedFrames.length > 0) {
+            animK += dt / 100;
+
+            while (animK >= 1 && queuedFrames.length > 0) {
+                animK -= 1;
+                const entry = queuedFrames.shift();
+                lastKeyframe = entry.pos;
+                if (entry.turn) setActiveTurn(entry.turn);
+                if (entry.hud) applyHudState(entry.hud);
+            }
+
+            if (queuedFrames.length > 0) {
+                currentPos = interpolatePosition(lastKeyframe, queuedFrames[0].pos, animK);
+            } else {
+                currentPos = lastKeyframe;
+                animK = 0;
+                flushGameEndEvents();
+            }
+        }
+
+        updateCameraTarget();
+        updateDisplay();
+        scene.render();
+    });
+
+    resizeOverlayCanvas();
+    window.addEventListener('resize', () => {
+        engine.resize();
+        resizeOverlayCanvas();
+        if (!overlayState.initialized) return;
+        updateOverlayClipRect();
+        if (overlayState.currentNodeId && overlayState.nodesById.has(overlayState.currentNodeId)) {
+            centerOverlayOnNode(overlayState.nodesById.get(overlayState.currentNodeId));
+        }
+        pruneOffscreenHistory();
+        renderOverlayData();
+    });
+
+    // === WebSocket client ===
+    const statusEl = document.getElementById('status');
+    const hudTurnNumber = document.getElementById('hudTurnNumber');
+    const hudPositionName = document.getElementById('hudPositionName');
+    const hudP1Score = document.getElementById('hudP1Score');
+    const hudP2Score = document.getElementById('hudP2Score');
+    const hudP1Flash = document.getElementById('hudP1Flash');
+    const hudP2Flash = document.getElementById('hudP2Flash');
+    const hudAnnouncement = document.getElementById('hudAnnouncement');
+    const blueTurnButton = document.getElementById('blueTurnButton');
+    const redTurnButton = document.getElementById('redTurnButton');
+    let prevHudState = null;
+    let currentPositionName = null;
+    let p1FlashTimer = null;
+    let p2FlashTimer = null;
+    let announcementTimer = null;
+    let lastGameConfig = null;
+    let ws;
+    let reconnectTimer;
+
+    function setActiveTurn(turn) {
+        const blueActive = turn === 'blue';
+        blueTurnButton.classList.toggle('active', blueActive);
+        redTurnButton.classList.toggle('active', !blueActive);
+        blueTurnButton.setAttribute('aria-pressed', blueActive ? 'true' : 'false');
+        redTurnButton.setAttribute('aria-pressed', blueActive ? 'false' : 'true');
+    }
+
+    function requestTurnState() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'get_turn' }));
+        }
+    }
+
+    function showFlash(el, text, setTimer, existingTimer) {
+        if (existingTimer) clearTimeout(existingTimer);
+        el.textContent = text;
+        setTimer(setTimeout(() => {
+            el.textContent = '';
+        }, 2000));
+    }
+
+    function applyHudState(msg) {
+        hudTurnNumber.textContent = msg.turn_number;
+        hudPositionName.textContent = msg.position_name;
+        currentPositionName = msg.position_name;
+        if (overlayState.initialized && overlayState.currentNodeId) {
+            const currentNode = overlayState.nodesById.get(overlayState.currentNodeId);
+            if (currentNode) {
+                currentNode.label = truncateLabel(currentPositionName);
+                renderOverlayData();
+            }
+        }
+        const prevP1 = prevHudState?.p1_points ?? null;
+        const prevP2 = prevHudState?.p2_points ?? null;
+        hudP1Score.textContent = 'P1: ' + msg.p1_points;
+        hudP2Score.textContent = 'P2: ' + msg.p2_points;
+        if (prevP1 !== null && msg.p1_points > prevP1) {
+            showFlash(
+                hudP1Flash,
+                '+' + (msg.p1_points - prevP1) + ' pts',
+                (t) => p1FlashTimer = t,
+                p1FlashTimer
+            );
+        }
+        if (prevP2 !== null && msg.p2_points > prevP2) {
+            showFlash(
+                hudP2Flash,
+                '+' + (msg.p2_points - prevP2) + ' pts',
+                (t) => p2FlashTimer = t,
+                p2FlashTimer
+            );
+        }
+        prevHudState = msg;
+    }
+
+    function applyAnnouncement(msg) {
+        if (announcementTimer) {
+            clearTimeout(announcementTimer);
+            announcementTimer = null;
+        }
+        hudAnnouncement.innerHTML = '';
+        hudAnnouncement.className = 'visible placement-' + msg.placement;
+        const panel = document.createElement('div');
+        panel.className = 'ann-panel panel-' + msg.panel_style;
+        const textEl = document.createElement('div');
+        textEl.className = 'ann-text';
+        textEl.style.color = `rgb(${msg.text_color[0]},${msg.text_color[1]},${msg.text_color[2]})`;
+        textEl.textContent = msg.text;
+        panel.appendChild(textEl);
+        hudAnnouncement.appendChild(panel);
+        announcementTimer = setTimeout(() => {
+            hudAnnouncement.classList.replace('visible', 'hidden');
+            announcementTimer = null;
+        }, msg.hold_seconds * 1000);
+    }
+
+    function flushGameEndEvents() {
+        while (pendingGameEndEvents.length > 0 && queuedFrames.length === 0 && !gameEndFlushTimer) {
+            const msg = pendingGameEndEvents.shift();
+            if (msg.type === 'announcement') {
+                applyAnnouncement(msg);
+                // hold remaining events (game_over) until the banner has displayed
+                gameEndFlushTimer = setTimeout(() => {
+                    gameEndFlushTimer = null;
+                    flushGameEndEvents();
+                }, msg.hold_seconds * 1000);
+            } else if (msg.type === 'game_over') {
+                playAgainOverlay.classList.add('visible');
+            }
+        }
+    }
+
+    const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+
+    // --- Play Again overlay ---
+    const playAgainOverlay = document.getElementById('playAgainOverlay');
+    document.getElementById('playAgainBtn').addEventListener('click', () => {
+        playAgainOverlay.classList.remove('visible');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'play_again' }));
+        }
+    });
+
+    // --- Config overlay ---
+    const configOverlay = document.getElementById('configOverlay');
+    const cfgMaxTurns = document.getElementById('cfgMaxTurns');
+    const cfgTurnDelay = document.getElementById('cfgTurnDelay');
+    const cfgError = document.getElementById('cfgError');
+    const cfgStart = document.getElementById('cfgStart');
+
+    function _buildPlayerPanel(radiosEl, policyEl, playerKey, policies) {
+        radiosEl.innerHTML = '';
+        // Human radio
+        const humanLabel = document.createElement('label');
+        const humanRadio = document.createElement('input');
+        humanRadio.type = 'radio';
+        humanRadio.name = `cfg-${playerKey}-type`;
+        humanRadio.value = 'human';
+        humanLabel.appendChild(humanRadio);
+        humanLabel.appendChild(document.createTextNode('Human'));
+        radiosEl.appendChild(humanLabel);
+        // Computer radio
+        const compLabel = document.createElement('label');
+        const compRadio = document.createElement('input');
+        compRadio.type = 'radio';
+        compRadio.name = `cfg-${playerKey}-type`;
+        compRadio.value = 'computer';
+        compRadio.checked = true;
+        compLabel.appendChild(compRadio);
+        compLabel.appendChild(document.createTextNode('Computer'));
+        radiosEl.appendChild(compLabel);
+
+        // Policy select — only computer policies
+        policyEl.innerHTML = '';
+        policies.filter(p => p.kind === 'computer').forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.label;
+            policyEl.appendChild(opt);
+        });
+
+        // Toggle select disabled state based on radio
+        function updateSelectState() {
+            policyEl.disabled = humanRadio.checked;
+        }
+        humanRadio.addEventListener('change', updateSelectState);
+        compRadio.addEventListener('change', updateSelectState);
+        updateSelectState();
+    }
+
+    function _applyPlayerConfig(playerKey, playerCfg) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        for (const r of radios) {
+            if (r.value === playerCfg.type) {
+                r.checked = true;
+                r.dispatchEvent(new Event('change'));
+                break;
+            }
+        }
+        if (playerCfg.type === 'computer' && playerCfg.policy_id) {
+            const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+            policyEl.value = playerCfg.policy_id;
+        }
+    }
+
+    function renderConfigOverlay(msg) {
+        const policies = msg.policies || [];
+        const settings = msg.settings || {};
+        // Apply settings defaults/min/max
+        if (settings.max_turns) {
+            cfgMaxTurns.value = settings.max_turns.default ?? 30;
+            cfgMaxTurns.min = settings.max_turns.min ?? 1;
+            cfgMaxTurns.max = settings.max_turns.max ?? 500;
+        }
+        if (settings.turn_delay) {
+            cfgTurnDelay.value = settings.turn_delay.default ?? 0.0;
+        }
+        // Build player panels
+        _buildPlayerPanel(
+            document.getElementById('cfgP1Radios'),
+            document.getElementById('cfgP1Policy'),
+            'p1', policies
+        );
+        _buildPlayerPanel(
+            document.getElementById('cfgP2Radios'),
+            document.getElementById('cfgP2Policy'),
+            'p2', policies
+        );
+        // Restore previous game settings if available (overrides server defaults)
+        if (lastGameConfig) {
+            cfgMaxTurns.value = lastGameConfig.settings.max_turns;
+            cfgTurnDelay.value = lastGameConfig.settings.turn_delay;
+            _applyPlayerConfig('p1', lastGameConfig.players.p1);
+            _applyPlayerConfig('p2', lastGameConfig.players.p2);
+        }
+        cfgError.textContent = '';
+        cfgStart.disabled = false;
+        cfgStart.textContent = 'Start';
+        configOverlay.classList.add('visible');
+    }
+
+    function hideConfigOverlay() {
+        configOverlay.classList.remove('visible');
+    }
+
+    function _getPlayerConfig(playerKey) {
+        const radios = document.querySelectorAll(`input[name="cfg-${playerKey}-type"]`);
+        let type = 'computer';
+        for (const r of radios) {
+            if (r.checked) { type = r.value; break; }
+        }
+        if (type === 'human') return { type: 'human' };
+        const policyEl = document.getElementById(`cfg${playerKey.replace('p', 'P')}Policy`);
+        return { type: 'computer', policy_id: policyEl.value };
+    }
+
+    cfgStart.addEventListener('click', () => {
+        cfgStart.disabled = true;
+        cfgStart.textContent = 'Starting…';
+        cfgError.textContent = '';
+        const payload = {
+            type: 'game_config',
+            settings: {
+                max_turns: parseInt(cfgMaxTurns.value, 10),
+                turn_delay: parseFloat(cfgTurnDelay.value),
+            },
+            players: {
+                p1: _getPlayerConfig('p1'),
+                p2: _getPlayerConfig('p2'),
+            },
+        };
+        lastGameConfig = { settings: payload.settings, players: payload.players };
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
+    });
+
+    function connect() {
+        ws = new WebSocket(`ws://localhost:${wsPort}`);
+
+        ws.onopen = () => {
+            statusEl.textContent = 'Connected';
+            requestTurnState();
+            setTimeout(() => statusEl.style.opacity = '0.3', 2000);
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            statusEl.style.opacity = '1';
+            if (msg.type === 'game_over') {
+                pendingGameEndEvents.push(msg);
+                flushGameEndEvents();
+                return;
+            }
+            if (msg.type === 'config_options') {
+                playAgainOverlay.classList.remove('visible');
+                renderConfigOverlay(msg);
+                return;
+            }
+            if (msg.type === 'config_error') {
+                cfgError.textContent = msg.message;
+                cfgStart.disabled = false;
+                cfgStart.textContent = 'Start';
+                return;
+            }
+            if (msg.type === 'hud_state') {
+                applyHudState(msg);
+                return;
+            }
+            if (msg.type === 'announcement') {
+                pendingGameEndEvents.push(msg);
+                flushGameEndEvents();
+                return;
+            }
+            if (msg.type === 'turn_state') {
+                if (msg.turn) {
+                    setActiveTurn(msg.turn);
+                }
+                return;
+            }
+            if (msg.type === 'legal_moves') {
+                renderLegalMovesOverlay(msg);
+                lastTransitionToNodeId = null;
+                statusEl.textContent = 'Choose a move';
+                return;
+            }
+
+            if (msg.type === 'position') {
+                hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
+                const nodeId = String(msg.node_id);
+                const matchesCurrent = overlayState.currentNodeId === nodeId;
+                const matchesLastTransition = lastTransitionToNodeId === nodeId;
+                if (overlayState.initialized && !matchesCurrent && !matchesLastTransition) {
+                    resetOverlayScene();
+                }
+                lastTransitionToNodeId = null;
+                const posData = msg.data;
+                if (!playerUpdaters) initPlayers(posData);
+                currentReo = zeroReo();
+                queuedFrames.length = 0;
+                pendingGameEndEvents.length = 0;
+                animK = 0;
+                currentPos = posData;
+                lastKeyframe = posData;
+                statusEl.textContent = 'Position: node ' + msg.node_id;
+                if (msg.turn) setActiveTurn(msg.turn);
+                if (msg.hud) applyHudState(msg.hud);
+            } else if (msg.type === 'transition') {
+                hideConfigOverlay();
+                playAgainOverlay.classList.remove('visible');
+                mergeTransitionOverlay(msg);
+                lastTransitionToNodeId = String(msg.to_node);
+                if (!currentReo) {
+                    currentReo = zeroReo();
+                }
+                queueTransitionFrames(msg);
+                statusEl.textContent =
+                    'Transition: ' + msg.transition_id +
+                    (msg.reverse ? ' (reverse)' : '') +
+                    ' [' + queuedFrames.length + ' frames queued]';
+            }
+        };
+
+        ws.onclose = () => {
+            statusEl.textContent = 'Disconnected — reconnecting...';
+            statusEl.style.opacity = '1';
+            resetOverlayScene();
+            reconnectTimer = setTimeout(connect, 2000);
+        };
+
+        ws.onerror = () => ws.close();
+    }
+
+    connect();
+    </script>
+</body>
+</html>

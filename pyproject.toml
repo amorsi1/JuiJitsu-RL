@@ -1,0 +1,41 @@
+[project]
+name = "JJ_RL"
+version = "0.1.0"
+description = "Train RL agents to play Brazilian Jiu-Jitsu using GrappleMap's position database"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=1.0",
+    "matplotlib>=3.7",
+    "networkx>=3.1",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "plotly>=5.15",
+    "pygame>=2.5",
+    "scipy>=1.10",
+    "tqdm>=4.65",
+    "websockets>=13.0",
+    "python-dotenv"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+training = [
+    "sb3-contrib>=2.3",
+    "torch<2.3",  # later versions lack macOS x86_64 wheels
+    "tensorboard>=2.14",
+    "setuptools<82",  # tensorboard imports pkg_resources, removed in 82+
+    "optuna>=3.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/Game", "src/Graph", "src/render"]
+
+[tool.uv]
+required-version = ">=0.9.17"
+exclude-newer = "1 week" 

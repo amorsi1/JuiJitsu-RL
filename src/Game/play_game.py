@@ -1,0 +1,420 @@
+import logging
+import random
+import networkx as nx
+from tqdm import tqdm
+import numpy as np
+from typing import Any, List, Tuple, Dict, Optional
+from Graph.graph_constructor import construct_graph
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from Game.logging_utils import build_gameplay_logger
+
+
+class Board:
+    def __init__(self, graph: nx.Graph):
+        self.graph = graph
+        self.rewards = {
+            'sweep': 2, 'mount': 4, 'back': 4,
+            'throw': 2, 'takedown': 2, 'pass': 3}
+
+    def get_node_data(self, node: int) -> Dict:
+        return self.graph.nodes[node]
+
+    def get_edge_data(self, from_node: int, to_node: int) -> Dict:
+        return self.graph.edges[from_node, to_node]
+
+    def get_outgoing_edges(self, node: int) -> List[Dict]:
+        return self.graph.nodes[node]['outgoing']
+
+class GameState:
+    def __init__(self, board: Board, logger: logging.Logger | None = None):
+        self.board = board
+        self.current_node = None
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.gamestate.{id(self)}", to_stdout=False
+        )        
+
+    def initialize(self) -> None:
+        """Initialize to a uniformly random valid position with outgoing edges."""
+        valid_nodes = [
+            node for node in self.board.graph.nodes()
+            if self.board.get_outgoing_edges(node)
+        ]
+
+        if not valid_nodes:
+            self.current_node = 94
+            return
+
+        self.current_node = random.choice(valid_nodes)
+
+    def update(self, new_node: int):
+        self.logger.info(
+            f"moving to position {self.board.get_node_data(new_node)['description']}"
+        )
+        self.current_node = new_node
+
+    def get_possible_moves(self, is_top: bool, is_bottom: bool) -> List[Tuple[int, Dict]]:
+        #note: May not need to pass in both top and bottom position? need to explicitly test that they are always opposites
+        #before any third state ([True,True] or [False,False]) will create issues if both attributes aren't passed in
+        """
+        Passes in Player's top/bottom position and calculates which moves are valid for the relative position of the player
+
+        Note that this logic assumes the player can perform all moves, then filters out ones that are not possible in
+        that position (i.e. top moves from bottom position and vice versa). This is an important distinction because it means
+        that any player can perform a move that doesn't have a top or bottom tag on it regardless of their position
+        """
+        possible_moves = []
+        for outgoing_edge in self.board.get_node_data(self.current_node)['outgoing']:
+            # player is on top position but the move is for bottom position
+            if is_top and outgoing_edge['bottom']:
+                pass
+            # player is on bottom position but the move is for top position
+            elif is_bottom and outgoing_edge['top']:
+                pass
+            # no conflicts found, the move is valid
+            else:
+                move = (outgoing_edge['to'], self.board.get_edge_data(outgoing_edge['from'], outgoing_edge['to']))
+                possible_moves.append(move)
+
+        return possible_moves
+
+    def process_move(self, move: Tuple[int, Dict]) -> Tuple[int, bool, bool]:
+        new_node, edge_data = move
+        points = self._calculate_points(edge_data)
+        player_tapped = edge_data.get('tap', False)
+        swap_players = edge_data.get('swaps_players', False)
+        self.update(new_node)
+        return points, player_tapped, swap_players
+
+    def _calculate_points(self, edge_data: Dict) -> int:
+        earned_points = 0  # iteratively add to this because a player may execute multiple maneuvers in the same move
+        for maneuver, points in self.board.rewards.items():
+            if edge_data.get(maneuver, False):
+                self.logger.info(f"{maneuver} executed, player wins {points} points")
+                earned_points += points
+        return earned_points
+
+    def check_winner(self) -> Optional[str]:
+        node_data = self.board.get_node_data(self.current_node)
+        return node_data.get('winner')
+
+class Player:
+    # do I need the strategy property? revisit this
+    def __init__(self, name: str, strategy: str = 'random'):
+        self.name = name
+        self.is_top = False
+        self.is_bottom = False
+        self.points = 0
+        self.strategy = strategy
+
+    def choose_move(self, possible_moves: List[Tuple[int, Dict]]) -> Tuple[int, Dict]:
+        assert possible_moves, "empty list of possible_moves passed to choose_move"
+        if callable(self.strategy):
+            return self.strategy(possible_moves)
+        if self.strategy == 'random':
+            return random.choice(possible_moves)
+        # Implement other strategies here
+        return random.choice(possible_moves)
+
+class Game:
+    def __init__(
+        self,
+        name: str,
+        max_turns: int = 100,
+        visualize_3d: bool = False,
+        turn_delay: float = 0.0,
+        visualizer: Any | None = None,
+        logger: logging.Logger | None = None,
+    ):
+        self.name = name
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.{id(self)}", to_stdout=False
+        )
+        self.board = Board(construct_graph())
+        self.game_state = GameState(self.board, logger=self.logger)
+        self.max_turns = max_turns
+        self.turn_count = 0
+        self.player1: Optional[Player] = None
+        self.player2: Optional[Player] = None
+        self.current_player: Optional[Player] = None
+        self.winner = None
+        self.win_reason: str | None = None
+        self._owns_visualizer: bool = visualizer is None and visualize_3d
+        if visualizer is not None:
+            self.visualizer = visualizer
+            self.visualizer.game_ref = self
+        elif visualize_3d:
+            from render.visualizer3d import Visualizer3D
+            self.visualizer = Visualizer3D(turn_delay=turn_delay)
+            self.visualizer.game_ref = self
+        else:
+            self.visualizer = None
+
+    def choose_other_player(self, player: Player) -> Player:
+        if player is self.player1:
+            return self.player2
+        elif player is self.player2:
+            return self.player1
+
+    def initialize_game(self, p1_name: str, p2_name: str):
+        self.logger.info(f"Initializing game: {self.name}")
+        self.game_state.initialize()
+        self.player1 = Player(p1_name)
+        self.player2 = Player(p2_name)
+        self._randomly_assign_positions()
+        self.current_player = random.choice([self.player1, self.player2])
+        if self.visualizer:
+            self.visualizer.update(
+                self.game_state.current_node,
+                active_turn=self._player_turn_color(self.current_player),
+            )
+
+    def _randomly_assign_positions(self):
+        """
+        Randomly chooses whether a player is in the top or bottom position, and give the other player the opposite
+        position.
+        """
+        self.player1.is_top = random.choice([True, False])
+        self.player1.is_bottom = not self.player1.is_top
+
+        self.player2.is_top = not self.player1.is_top
+        self.player2.is_bottom = not self.player1.is_bottom
+
+        self.logger.info(f'{self.player1.name} is on {"top" if self.player1.is_top else "bottom"}')
+        self.logger.info(f'{self.player2.name} is on {"top" if self.player2.is_top else "bottom"}')
+
+    def _player_turn_color(self, player: Player) -> str:
+        return 'red' if player is self.player1 else 'blue'
+
+    def _swap_players_positions(self):
+        """
+        gives each player the other players' top and bottom position attributes
+        """
+        cache = (self.player1.is_top, self.player1.is_bottom)
+        self.player1.is_top, self.player1.is_bottom = self.player2.is_top, self.player2.is_bottom
+        self.player2.is_top, self.player2.is_bottom = cache
+
+    def _is_chosen_move_forced(
+        self,
+        possible_moves: List[Tuple[int, Dict]],
+        chosen_move: Tuple[int, Dict],
+    ) -> bool:
+        if len(possible_moves) != 1:
+            return False
+        only_move = possible_moves[0]
+        if only_move == chosen_move:
+            return True
+        return (
+            only_move[0] == chosen_move[0]
+            and only_move[1].get("id") == chosen_move[1].get("id")
+        )
+
+    def play_turn(self, chosen_move: Tuple[int, Dict] = None) -> bool:
+        possible_moves = self.game_state.get_possible_moves(
+            self.current_player.is_top,
+            self.current_player.is_bottom,
+        )
+        if chosen_move is not None:
+            move = chosen_move
+            is_forced_move = self._is_chosen_move_forced(possible_moves, move)
+        else:
+            if not possible_moves:
+                # if current state is a terminal node, but not associated with a win or loss
+                if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
+                    # change to random node, then allow player to play their turn
+                    self.logger.info("Terminal position encountered. switching to random position ")
+                    self.game_state.initialize()
+                    return self.play_turn()
+                else:
+                    self.logger.info(
+                        f"No moves available for {self.current_player.name}. Switching players."
+                    )
+                    self.switch_players()
+                    self.ensure_playable_state()
+                    return False
+            else:
+                move = self.current_player.choose_move(possible_moves)
+                is_forced_move = len(possible_moves) == 1
+        points, player_tapped, swap_players_positions = self.game_state.process_move(move)
+        self.current_player.points += points
+        move_description = move[1]["description"]
+        if is_forced_move:
+            self.logger.info(
+                f"{self.current_player.name} forced to perform '{move_description}'"
+            )
+        else:
+            self.logger.info(f"{self.current_player.name} performed '{move_description}'")
+        next_player = self.choose_other_player(self.current_player)
+        winner = self.game_state.check_winner()
+        next_turn = (
+            self._player_turn_color(self.current_player)
+            if (player_tapped or winner)
+            else self._player_turn_color(next_player)
+        )
+        if self.visualizer:
+            transition_id = move[1].get('id')
+            self.visualizer.update(
+                self.game_state.current_node,
+                transition_id=transition_id,
+                active_turn=next_turn,
+            )
+        if points>0:
+            self.logger.info(f"Player earned {points} points for that move")
+
+        if player_tapped:
+            winning_player = self.choose_other_player(self.current_player)
+            self.logger.info(f"{self.current_player.name} tapped - {winning_player.name} has won! ")
+            self.winner = winning_player
+            self.win_reason = "submission"
+            return True
+
+        if winner:
+            # arriving at this node means that one of the players has won already
+            winning_player = self.player1 if ((self.player1.is_top and winner == 'top') or
+                                              (self.player1.is_bottom and winner == 'bottom')) else self.player2
+            self.winner = winning_player
+            self.win_reason = "position"
+            self.logger.info(f"{winning_player.name} won by reaching a winning position!")
+            return True
+
+        if swap_players_positions:
+            self._swap_players_positions()
+
+        self.switch_players()
+        self.ensure_playable_state()
+        return False
+
+    def switch_players(self) -> bool:
+        self.current_player = self.player2 if self.current_player is self.player1 else self.player1
+        return False
+
+    def ensure_playable_state(self) -> None:
+        """Ensure the current player has at least one valid move.
+
+        After switching players, the new current player may face a dead-end
+        node (no outgoing edges) or a position where all outgoing edges require
+        the opposite top/bottom role. Resolves by reinitializing on dead-ends
+        and switching players when edges exist but none are valid.
+
+        Since players always have opposite positions, at most one switch is
+        needed for non-dead-end nodes. The bounded loop handles the rare case
+        where reinitializing lands on another dead-end.
+        """
+        for _ in range(10):  # safety bound; should resolve in 1-2 iterations
+            if self.winner is not None:
+                return
+            if not self.game_state.board.get_outgoing_edges(self.game_state.current_node):
+                self.game_state.initialize()
+                continue
+            if self.game_state.get_possible_moves(
+                self.current_player.is_top, self.current_player.is_bottom
+            ):
+                return
+            self.switch_players()
+
+    def check_for_points_win(self):
+        if self.player1.points > self.player2.points:
+            self.winner = self.player1
+            self.win_reason = "points"
+            self.logger.info(f"{self.player1.name} wins!")
+        elif self.player2.points > self.player1.points:
+            self.winner = self.player2
+            self.win_reason = "points"
+            self.logger.info(f"{self.player2.name} wins!")
+        else:
+            self.logger.info("It's a tie!")
+
+    def play_game(self):
+        max_turns = self.max_turns
+        for turn in range(1, max_turns + 1):
+            self.turn_count += 1
+            self.logger.info(f"\nTurn {turn}:")
+            if self.play_turn():
+                break
+        if not self.winner:
+            self.check_for_points_win()
+        self._print_game_result()
+
+    def _print_game_result(self):
+        self.logger.info("\nGame over! Final scores:")
+        self.logger.info(f"{self.player1.name}: {self.player1.points}")
+        self.logger.info(f"{self.player2.name}: {self.player2.points}")
+        if self.visualizer and self._owns_visualizer:
+            self.visualizer.close()
+
+class Simulation:
+    def __init__(self, num_games: int, logger: logging.Logger | None = None):
+        self.num_games = num_games
+        self.games = []
+        self.results = []
+        self.logger = logger or build_gameplay_logger(
+            f"Game.gameplay.simulation.{id(self)}", to_stdout=False
+        )
+
+    def initialize_games(self, num_turns: int = 100):
+        self.logger.info("Initializing games")
+        self.games = [Game(f"Game_{i}", max_turns= num_turns) for i in range(self.num_games)]
+        for game in tqdm(self.games):
+            game.initialize_game(f"Player1_{game.name}", f"Player2_{game.name}")
+
+    def run_games(self):
+        self.logger.info("running games")
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self.play_single_game, game) for game in self.games]
+            for future in tqdm(as_completed(futures)):
+                self.results.append(future.result())
+
+    def play_single_game(self, game: Game) -> Dict:
+        game.play_game()
+        return {
+            'game_name': game.name,
+            'player1_name': game.player1.name,
+            'player2_name': game.player2.name,
+            'winner': game.winner.name if game.winner else 'Tie',
+            'player1_points': game.player1.points,
+            'player2_points': game.player2.points,
+            'num_turns': game.turn_count
+        }
+
+    def agg_results(self) -> List[Dict]:
+        self.logger.info("SIMULATION RESULTS:")
+        results = self.results
+        player1_wins = 0
+        player2_wins = 0
+        num_ties = 0
+        for result in results:
+            if result['winner'] == result['player1_name']:
+                player1_wins += 1
+            elif result['winner'] == result['player2_name']:
+                player2_wins += 1
+            else:
+                num_ties += 1
+        self.logger.info(
+            f"Player 1 won {player1_wins} games out of {len(results)} ({round(player1_wins/len(results),2)})"
+        )
+        self.logger.info(
+            f"Player 2 won {player2_wins} games out of {len(results)} ({round(player2_wins / len(results),2)})"
+        )
+        if num_ties > 0:
+            self.logger.info(f"there were {num_ties} ties")
+        num_turns = [i['num_turns'] for i in results]
+        self.logger.info(
+            f"On average, games lasted {np.mean(num_turns)} with a min of {np.minimum(num_turns)} and a max of {np.maximum(num_turns)}"
+        )
+
+        return self.results
+
+    def reset(self):
+        self.games = []
+        self.results = []
+
+if __name__ == "__main__":
+    # Single game example
+    game = Game("BJJ Simulation", logger=build_gameplay_logger("Game.gameplay.demo", to_stdout=True))
+    game.initialize_game("Player 1", "Player 2")
+    game.play_game()
+
+    # Parallel multi-threaded example
+    # simulation = Simulation(num_games=100)
+    # simulation.initialize_games()
+    # simulation.run_games(max_turns=200)
+    # simulation.agg_results()
