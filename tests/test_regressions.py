@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from Game.play_game import Game, Player
+import networkx as nx
+
+from Game.play_game import Board, Game, GameState, Player
 from Graph.graph_constructor import load_json
 
 
@@ -30,3 +32,18 @@ def test_load_json_nodes_file_successfully():
     assert isinstance(nodes, list)
     assert nodes
     assert isinstance(nodes[0], dict)
+
+
+def test_initialize_samples_only_valid_nodes_without_node_94_bias() -> None:
+    """initialize() must be uniform over nodes with outgoing edges (no 50% node-94 bias)."""
+    graph = nx.DiGraph()
+    graph.add_nodes_from([(n, {"outgoing": [{}]}) for n in (1, 2, 3)])
+    graph.add_node(94, outgoing=[])  # dead end, so never a valid start
+
+    state = GameState(Board(graph))
+    starts = set()
+    for _ in range(200):
+        state.initialize()
+        starts.add(state.current_node)
+
+    assert starts == {1, 2, 3}
